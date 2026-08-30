@@ -103,6 +103,13 @@ Panel {
       // Pull the passphrase straight from the user-owned secret file rather
       // than from the status channel.
       readPassword()
+    } else if (root.isError) {
+      // We're showing a failure. A fresh status of "off" is expected right
+      // after a failed toggle (the AP hasn't come up), so don't let the
+      // periodic/refresh status call clobber the error detail the user needs
+      // to see. It clears on the next successful toggle or once the hotspot
+      // actually starts.
+      return
     } else {
       hotspotState = "off"
       hotspotPassword = ""
@@ -181,12 +188,6 @@ Panel {
     if (isBusy) return "…"
     if (isError) return "ERROR"
     return "OFF"
-  }
-
-  function headerDetail() {
-    if (isOn) return "Sharing " + (hotspotUplink || "this connection")
-    if (isError) return lastError
-    return "Wi-Fi stays connected"
   }
 
   // ---- Cursor navigation ------------------------------------------------
@@ -437,6 +438,56 @@ Panel {
             font.bold: true
             font.letterSpacing: 1.2
             elide: Text.ElideRight
+          }
+        }
+      }
+
+      // ---------- Error notification (hotspot failed to start) ----------
+      Rectangle {
+        id: errorBox
+        visible: root.isError
+        width: parent.width
+        implicitHeight: errorBoxInner.implicitHeight + Style.space(20)
+        color: Qt.alpha(root.urgent, 0.12)
+        radius: Style.cornerRadius
+        border.color: Qt.alpha(root.urgent, 0.45)
+        border.width: 1
+
+        Column {
+          id: errorBoxInner
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.margins: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(4)
+
+          Text {
+            width: parent.width
+            text: "⚠ HOTSPOT FAILED TO START"
+            color: root.urgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 1.2
+          }
+
+          Text {
+            width: parent.width
+            text: root.lastError || "Check the logs: journalctl -u omarchy-hotspot"
+            textFormat: Text.PlainText
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.Wrap
+          }
+
+          Text {
+            width: parent.width
+            text: "Toggle again once the issue is fixed."
+            color: Qt.darker(root.foreground, 1.5)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.Wrap
           }
         }
       }

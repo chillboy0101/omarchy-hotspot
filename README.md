@@ -108,6 +108,7 @@ sudo pacman -Rns hostapd dnsmasq               # optional: if nothing else uses 
 | Connects but no internet | Check `iptables -L INPUT -n` — UFW's DROP policy must not cover `ap0` (the helper inserts an ACCEPT). |
 | `nl80211: Match already configured` | The `ap0` vif must be `ip link set up` **before** hostapd starts (the helper does this). |
 | No DHCP | `journalctl -u omarchy-hotspot-dns` — verify `--log-dhcp` shows DISCOVER → OFFER → ACK. |
+| Turned on but nothing happens / no error | Opening the popup when the hotspot fails now shows a red **HOTSPOT FAILED TO START** banner with the reason. If the panel stays silent, the toggle itself may not have run the helper (polkit) — check `journalctl -u omarchy-hotspot` and that the passwordless pkexec rule in `/etc/polkit-1/rules.d/50-omarchy-hotspot.rules` matches your user. |
 
 ## Extending
 
