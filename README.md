@@ -159,6 +159,7 @@ Thanks to everyone who has helped improve this project:
 |---|---|
 | **[Shivam Narkar](https://github.com/shivamnarkar47)** — `@shivamnarkar47` | Creator & maintainer |
 | **[Muhammad Dicky Isra](https://github.com/DaDecky)** — `@DaDecky` | Contributor (scoped IPv6 resolver fix) |
+| **[JunaidIRF](https://github.com/JunaidIRF)** — `@JunaidIRF` | Contributor (inline SSID editor & popup overflow fix) |
 
 Want to join them? See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to get started.
 

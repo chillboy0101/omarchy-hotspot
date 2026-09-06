@@ -78,3 +78,13 @@ Be respectful and constructive. We're all here to build something useful togethe
 ## Questions?
 
 Open an issue and ask. We're happy to help you get started.
+
+## Contributors
+
+Thanks to everyone who has helped improve this project:
+
+| Contributor | Role |
+|---|---|
+| **[Shivam Narkar](https://github.com/shivamnarkar47)** — `@shivamnarkar47` | Creator & maintainer |
+| **[Muhammad Dicky Isra](https://github.com/DaDecky)** — `@DaDecky` | Contributor (scoped IPv6 resolver fix) |
+| **[JunaidIRF](https://github.com/JunaidIRF)** — `@JunaidIRF` | Contributor (inline SSID editor & popup overflow fix) |
