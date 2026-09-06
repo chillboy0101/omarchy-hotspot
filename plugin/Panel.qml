@@ -19,7 +19,8 @@ Panel {
 
   readonly property string helper: "/usr/local/bin/omarchy-hotspot-helper"
   readonly property string qrScript: decodeURIComponent(String(Qt.resolvedUrl("qr.sh")).replace(/^file:\/\//, ""))
-  readonly property string hotspotSsid: "OmarchyHotspot"
+  property string hotspotSsid: "OmarchyHotspot"
+  readonly property string ssidFile: "/var/lib/omarchy-hotspot/ssid"
   readonly property string passwordFile: "/var/lib/omarchy-hotspot/password"
 
   // "off" | "on" | "busy" | "error"
@@ -29,6 +30,13 @@ Panel {
   property string hotspotChannel: ""
   property string hotspotClients: ""
   property string lastError: ""
+
+  // SSID editing state.
+  property bool editingSsid: false
+  property string ssidDraft: ""
+  property bool ssidBusy: false
+  property string ssidError: ""
+  property string pendingSsid: ""
 
   // Password editing state.
   property bool editingPassword: false
@@ -96,6 +104,7 @@ Panel {
     var parts = String(raw || "").trim().split(/\s+/)
     if (parts[0] === "on") {
       hotspotState = "on"
+      if (parts[1] && !root.editingSsid) hotspotSsid = parts[1]
       hotspotUplink = parts[2] || ""
       hotspotChannel = parts[3] || ""
       hotspotClients = parts[4] || ""
@@ -112,6 +121,7 @@ Panel {
       return
     } else {
       hotspotState = "off"
+      if (parts[1] && !root.editingSsid) hotspotSsid = parts[1]
       hotspotPassword = ""
       hotspotUplink = ""
       hotspotChannel = ""
@@ -152,6 +162,7 @@ Panel {
 
   function startPasswordEdit() {
     if (passwordBusy) return
+    if (editingSsid) cancelSsidEdit()
     passwordDraft = hotspotPassword || ""
     passwordError = ""
     editingPassword = true
@@ -177,6 +188,36 @@ Panel {
     pendingPassword = draft
     passProc.command = ["bash", "-c", "pkexec " + root.helper + " set-password"]
     passProc.running = true
+  }
+
+  function startSsidEdit() {
+    if (ssidBusy) return
+    if (editingPassword) cancelPasswordEdit()
+    ssidDraft = hotspotSsid || "OmarchyHotspot"
+    ssidError = ""
+    editingSsid = true
+    Qt.callLater(function() {
+      if (typeof qrSsidField !== "undefined" && qrSsidField && qrSsidField.visible) qrSsidField.forceActiveFocus()
+    })
+  }
+
+  function cancelSsidEdit() {
+    editingSsid = false
+    ssidDraft = ""
+    ssidError = ""
+    Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+  }
+
+  function saveSsid() {
+    if (ssidBusy) return
+    var draft = ssidDraft.trim()
+    if (draft.length < 1) { ssidError = "SSID cannot be empty"; return }
+    if (draft.length > 32) { ssidError = "Maximum 32 characters"; return }
+    ssidBusy = true
+    ssidError = ""
+    pendingSsid = draft
+    ssidProc.command = ["bash", "-c", "pkexec " + root.helper + " set-ssid"]
+    ssidProc.running = true
   }
 
   function statusLine() {
@@ -249,6 +290,28 @@ Panel {
     onExited: function(code) {
       if (code !== 0) root.lastError = String(qrErr.text || "").trim().slice(0, 120) || ("QR failed: exit " + code)
       qrLoading = false
+    }
+  }
+
+  Process {
+    id: ssidProc
+    stdinEnabled: true
+    stdout: StdioCollector { id: ssidOut; waitForEnd: true }
+    stderr: StdioCollector { id: ssidErr; waitForEnd: true }
+    onStarted: function() {
+      ssidProc.write(root.pendingSsid + "\n")
+    }
+    onExited: function(code) {
+      ssidBusy = false
+      if (code !== 0) {
+        ssidError = String(ssidErr.text || ssidOut.text || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
+        return
+      }
+      root.hotspotSsid = root.pendingSsid
+      editingSsid = false
+      ssidDraft = ""
+      root.refresh()
+      if (root.isOn) root.generateQr()
     }
   }
 
@@ -578,58 +641,133 @@ Panel {
           anchors.horizontalCenter: parent.horizontalCenter
         }
 
-        // SSID + password under the code, with copy.
+        // Normal state: SSID · Password
         Row {
+          visible: !root.editingSsid && !root.editingPassword
           anchors.horizontalCenter: parent.horizontalCenter
-          spacing: Style.space(10)
+          spacing: Style.space(8)
 
-          Text {
-            text: root.hotspotSsid
-            textFormat: Text.PlainText
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            font.bold: true
+          Row {
+            spacing: Style.space(4)
+
+            Text {
+              text: root.hotspotSsid
+              textFormat: Text.PlainText
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              font.bold: true
+            }
+
+            PanelActionButton {
+              iconText: "󰏫"
+              tooltipText: "Edit name"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.startSsidEdit()
+            }
           }
 
           Text {
-            visible: !root.editingPassword
-            text: root.hotspotPassword || "—"
-            textFormat: Text.PlainText
+            text: "·"
             color: Qt.darker(root.foreground, 1.4)
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
           }
 
+          Row {
+            spacing: Style.space(4)
+
+            Text {
+              text: root.hotspotPassword || "—"
+              textFormat: Text.PlainText
+              color: Qt.darker(root.foreground, 1.4)
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            PanelActionButton {
+              iconText: "󰏫"
+              tooltipText: "Edit password"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              hasCursor: root.editHasCursor
+              onHovered: function(on) { if (on) root.setSection("actions", 2) }
+              onClicked: root.startPasswordEdit()
+            }
+
+            PanelActionButton {
+              iconText: root.copyFlash ? "" : ""
+              tooltipText: "Copy password"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              hasCursor: root.copyHasCursor
+              onHovered: function(on) { if (on) root.setSection("actions", 0) }
+              onClicked: root.copyPassword()
+            }
+          }
+        }
+
+        // Editing SSID: centered row
+        Row {
+          visible: root.editingSsid
+          anchors.horizontalCenter: parent.horizontalCenter
+          spacing: Style.space(6)
+
+          TextField {
+            id: qrSsidField
+            width: Style.space(140)
+            text: root.ssidDraft
+            placeholderText: "Hotspot Name"
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            foreground: root.foreground
+            horizontalPadding: Style.space(8)
+            verticalPadding: Style.space(3)
+            onTextChanged: if (visible && text !== root.ssidDraft) root.ssidDraft = text
+            onAccepted: root.saveSsid()
+            Keys.onEscapePressed: root.cancelSsidEdit()
+          }
+
+          PanelActionButton {
+            iconText: ""
+            tooltipText: "Save name"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: root.saveSsid()
+          }
+
+          PanelActionButton {
+            iconText: "󰜺"
+            tooltipText: "Cancel"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: root.cancelSsidEdit()
+          }
+        }
+
+        // Editing Password: centered row
+        Row {
+          visible: root.editingPassword
+          anchors.horizontalCenter: parent.horizontalCenter
+          spacing: Style.space(6)
+
           TextField {
             id: passwordField
-            visible: root.editingPassword
-            width: Style.space(130)
+            width: Style.space(140)
             text: root.passwordDraft
             placeholderText: "New password (8+)"
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             foreground: root.foreground
-            horizontalPadding: Style.space(6)
-            verticalPadding: Style.space(2)
+            horizontalPadding: Style.space(8)
+            verticalPadding: Style.space(3)
             onTextChanged: if (visible && text !== root.passwordDraft) root.passwordDraft = text
             onAccepted: root.savePassword()
             Keys.onEscapePressed: root.cancelPasswordEdit()
           }
 
           PanelActionButton {
-            visible: !root.editingPassword
-            iconText: "󰏫"
-            tooltipText: "Edit password"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            hasCursor: root.editHasCursor
-            onHovered: function(on) { if (on) root.setSection("actions", 2) }
-            onClicked: root.startPasswordEdit()
-          }
-
-          PanelActionButton {
-            visible: root.editingPassword
             iconText: ""
             tooltipText: "Save password"
             foreground: root.foreground
@@ -638,23 +776,22 @@ Panel {
           }
 
           PanelActionButton {
-            visible: root.editingPassword
             iconText: "󰜺"
             tooltipText: "Cancel"
             foreground: root.foreground
             fontFamily: root.fontFamily
             onClicked: root.cancelPasswordEdit()
           }
+        }
 
-          PanelActionButton {
-            iconText: root.copyFlash ? "" : ""
-            tooltipText: "Copy password"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            hasCursor: root.copyHasCursor
-            onHovered: function(on) { if (on) root.setSection("actions", 0) }
-            onClicked: root.copyPassword()
-          }
+        Text {
+          visible: root.ssidError !== ""
+          text: root.ssidError
+          textFormat: Text.PlainText
+          color: root.urgent
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          anchors.horizontalCenter: parent.horizontalCenter
         }
 
         Text {

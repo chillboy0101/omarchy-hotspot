@@ -15,6 +15,7 @@ VIF="ap0"
 RUN_DIR="/run/omarchy-hotspot"
 STATE_DIR="/var/lib/omarchy-hotspot"
 PASS_FILE="$STATE_DIR/password"
+SSID_FILE="$STATE_DIR/ssid"
 AP_CONF="$RUN_DIR/hostapd.conf"
 AP_PID="$RUN_DIR/hostapd.pid"
 AP_SUBNET="10.42.0.0/24"
@@ -74,7 +75,11 @@ station_vht_center() {
 }
 
 ap_ssid() {
-  echo "OmarchyHotspot"
+  if [ -s "$SSID_FILE" ]; then
+    cat "$SSID_FILE"
+  else
+    echo "OmarchyHotspot"
+  fi
 }
 
 vif_exists() {
@@ -103,6 +108,10 @@ real_user() {
 protect_passfile() {
   chown "$(real_user)" "$PASS_FILE" 2>/dev/null || true
   chmod 600 "$PASS_FILE"
+  if [ -f "$SSID_FILE" ]; then
+    chown "$(real_user)" "$SSID_FILE" 2>/dev/null || true
+    chmod 644 "$SSID_FILE" 2>/dev/null || true
+  fi
 }
 
 ensure_state() {
@@ -111,6 +120,9 @@ ensure_state() {
   chmod 700 "$RUN_DIR"
   if [ ! -s "$PASS_FILE" ]; then
     tr -dc 'A-Za-z0-9' </dev/urandom | head -c 10 >"$PASS_FILE" || true
+  fi
+  if [ ! -s "$SSID_FILE" ]; then
+    echo "OmarchyHotspot" >"$SSID_FILE" || true
   fi
   protect_passfile
 }
@@ -286,7 +298,7 @@ uplink_iface() {
 
 status_text() {
   if ! hotspot_on; then
-    echo "off"
+    echo "off $(ap_ssid)"
     return
   fi
   local iface channel clients
@@ -344,6 +356,40 @@ set_password() {
   echo "ok"
 }
 
+set_ssid() {
+  local newssid byte_len
+  IFS= read -r newssid
+  if [ -z "$newssid" ]; then
+    echo "No SSID provided on stdin" >&2
+    return 1
+  fi
+  local total printable
+  total="$(printf '%s' "$newssid" | wc -c)"
+  printable="$(printf '%s' "$newssid" | LC_ALL=C tr -cd '[:print:]' | wc -c)"
+  if [ "$total" -ne "$printable" ]; then
+    echo "SSID must contain only printable characters" >&2
+    return 1
+  fi
+  byte_len="$(printf '%s' "$newssid" | wc -c)"
+  if [ "$byte_len" -lt 1 ] || [ "$byte_len" -gt 32 ]; then
+    echo "SSID must be between 1 and 32 characters" >&2
+    return 1
+  fi
+  ensure_state
+  printf '%s' "$newssid" >"$SSID_FILE"
+  protect_passfile
+  if hotspot_on; then
+    write_hostapd_conf
+    systemctl restart omarchy-hotspot
+    sleep 1
+    if ! systemctl is-active --quiet omarchy-hotspot; then
+      echo "hostapd failed to restart with the new SSID" >&2
+      return 1
+    fi
+  fi
+  echo "ok"
+}
+
 run_tests() {
   # Compare daemonization modes; foreground worked, -B fails silently.
   ensure_state
@@ -389,6 +435,7 @@ helper_dispatch() {
       fi
       ;;
     set-password) set_password ;;
+    set-ssid) set_ssid ;;
     *)
       if [ -n "${PKEXEC_UID:-}" ]; then
         echo "Subcommand '$1' is not permitted via pkexec" >&2
@@ -410,7 +457,7 @@ helper_dispatch() {
           pgrep -a hostapd 2>&1
           ;;
         *)
-          echo "usage: omarchy-hotspot-helper {status|toggle|set-password|debug|test}" >&2
+          echo "usage: omarchy-hotspot-helper {status|toggle|set-password|set-ssid|debug|test}" >&2
           exit 2
           ;;
       esac
