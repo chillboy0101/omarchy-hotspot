@@ -151,6 +151,17 @@ The runtime is powered by excellent upstream free software:
 - [qrencode](https://fukuchi.org/works/qrencode/) — encodes the `WIFI:` payload
   into the scannable matrix.
 
+## Contributors
+
+Thanks to everyone who has helped improve this project:
+
+| Contributor | Role |
+|---|---|
+| **[Shivam Narkar](https://github.com/shivamnarkar47)** — `@shivamnarkar47` | Creator & maintainer |
+| **[Muhammad Dicky Isra](https://github.com/DaDecky)** — `@DaDecky` | Contributor (scoped IPv6 resolver fix) |
+
+Want to join them? See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to get started.
+
 ## License
 
 MIT
