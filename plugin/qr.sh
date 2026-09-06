@@ -4,8 +4,11 @@
 # Payload follows the WIFI: scheme used by Android/iOS scanners.
 set -euo pipefail
 
-SSID="OmarchyHotspot"
+SSID_FILE="/var/lib/omarchy-hotspot/ssid"
 PASS_FILE="/var/lib/omarchy-hotspot/password"
+
+SSID="$(cat "$SSID_FILE" 2>/dev/null || true)"
+[ -n "$SSID" ] || SSID="OmarchyHotspot"
 
 pass="$(cat "$PASS_FILE" 2>/dev/null || true)"
 [ -n "$pass" ] || { echo "No hotspot password yet — start the hotspot first" >&2; exit 1; }
