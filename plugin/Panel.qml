@@ -395,9 +395,6 @@ Panel {
     // Keep the icon in the same neutral bar colour as Network and the other
     // widgets; the on/off state is shown inside the popup and by the toggle.
     active: false
-    tooltipText: root.isOn
-      ? ("Hotspot · " + root.statusLine())
-      : "Hotspot"
 
     onPressed: function(btn) {
       if (btn !== Qt.LeftButton) return
