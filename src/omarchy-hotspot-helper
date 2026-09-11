@@ -334,6 +334,15 @@ status_text() {
   echo "on $(ap_ssid) $(uplink_iface) ${channel:-} ${clients:-0}"
 }
 
+clients_text() {
+  vif_exists || return 0
+  iw dev "$VIF" station dump 2>/dev/null | awk '
+    /^Station / { mac=$2; signal=""; connected="" }
+    /^\tsignal:/ { signal=$2 }
+    /^\tconnected time:/ { connected=$3; if (mac != "") print mac "\t" signal "\t" connected }
+  '
+}
+
 set_password() {
   local newpass byte_len
   # Read the passphrase from stdin (never argv) so it is not exposed via the
@@ -446,6 +455,7 @@ run_tests() {
 helper_dispatch() {
   case "$1" in
     status) status_text ;;
+    clients) clients_text ;;
     toggle)
       if hotspot_on; then
         stop_ap

@@ -30,6 +30,7 @@ Panel {
   property string hotspotUplink: ""
   property string hotspotChannel: ""
   property string hotspotClients: ""
+  property var hotspotDevices: []
   property string lastError: ""
   property bool showPassword: false
   property bool qrOverlayOpen: false
@@ -99,6 +100,10 @@ Panel {
     // pkexec (passwordless via polkit rule): channel + client counts need root.
     statusProc.command = ["bash", "-c", "pkexec " + root.helper + " status"]
     statusProc.running = true
+    if (isOn && !clientsProc.running) {
+      clientsProc.command = ["bash", "-c", "pkexec " + root.helper + " clients"]
+      clientsProc.running = true
+    }
   }
 
   function toggle() {
@@ -124,6 +129,10 @@ Panel {
       hotspotUplink = parts[2] || ""
       hotspotChannel = parts[3] || ""
       hotspotClients = parts[4] || ""
+      if (!clientsProc.running) {
+        clientsProc.command = ["bash", "-c", "pkexec " + root.helper + " clients"]
+        clientsProc.running = true
+      }
       if (qrSize === 0 && !qrProc.running) Qt.callLater(generateQr)
       // Pull the passphrase straight from the user-owned secret file rather
       // than from the status channel.
@@ -142,6 +151,7 @@ Panel {
       hotspotUplink = ""
       hotspotChannel = ""
       hotspotClients = ""
+      hotspotDevices = []
     }
   }
 
@@ -276,6 +286,21 @@ Panel {
     onExited: function(code) {
       if (code !== 0 && hotspotState !== "busy") hotspotState = "error"
     }
+  }
+
+  Process {
+    id: clientsProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var rows = String(text || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
+        root.hotspotDevices = rows.map(function(line) {
+          var p = line.split("\t")
+          return { mac: p[0] || "", signal: p[1] || "", connected: p[2] || "" }
+        }).filter(function(device) { return device.mac !== "" })
+      }
+    }
+    onExited: function(code) { if (code !== 0) root.hotspotDevices = [] }
   }
 
   Process {
@@ -780,6 +805,52 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             font.bold: true
+          }
+        }
+
+        Column {
+          visible: root.isOn && root.hotspotDevices.length > 0 && !root.editingSsid && !root.editingPassword
+          width: parent.width
+          spacing: Style.space(6)
+
+          Repeater {
+            model: root.hotspotDevices
+
+            RowLayout {
+              required property var modelData
+              width: parent.width
+              spacing: Style.space(8)
+
+              Text {
+                text: "•"
+                color: root.foreground
+                opacity: 0.65
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
+
+              Text {
+                text: modelData.mac
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                Layout.fillWidth: true
+              }
+
+              Text {
+                text: modelData.signal ? modelData.signal + " dBm" : ""
+                color: Qt.darker(root.foreground, 1.4)
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+
+              Text {
+                text: modelData.connected ? modelData.connected + "s" : ""
+                color: Qt.darker(root.foreground, 1.4)
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+            }
           }
         }
 
