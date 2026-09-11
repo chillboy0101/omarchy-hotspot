@@ -4,7 +4,7 @@ A **mobile hotspot that never drops your Wi-Fi**. One click in your Omarchy
 bar turns this laptop into a Wi-Fi AP (`OmarchyHotspot`) that shares your
 current connection — while the station link stays up the entire time.
 
-![kinds](https://img.shields.io/badge/Omarchy-shell%20plugin-8b5cf6) ![license](https://img.shields.io/badge/license-MIT-green) ![ci](https://github.com/shivamnarkar47/omarchy-hotspot/actions/workflows/ci.yml/badge.svg)
+![kinds](https://img.shields.io/badge/Omarchy-shell%20plugin-8b5cf6) ![license](https://img.shields.io/badge/license-MIT-green) ![ci](https://github.com/chillboy0101/omarchy-hotspot/actions/workflows/ci.yml/badge.svg)
 
 ![Hotspot panel](docs/hotspot-panel.png)
 
@@ -39,7 +39,7 @@ The AP runs on a **virtual interface** (`ap0`) alongside your station interface:
   (`omarchy-hotspot-dns.service`).
 - **iptables** does NAT/forwarding, with an explicit INPUT accept on `ap0` —
   UFW's default DROP policy would otherwise eat client DHCP/DNS.
-- The bar plugin (`io.github.shivamnarkar47.omarchy-hotspot`) polls `status` via `pkexec` and renders
+- The bar plugin (`io.github.chillboy0101.omarchy-hotspot`) polls `status` via `pkexec` and renders
   the popup with the QR matrix (qrencode → 0/1 modules, same format as
   `omarchy.wifiqr`).
 
@@ -63,12 +63,12 @@ The repository root is a valid Omarchy plugin (`manifest.json` at the root,
 validated by `omarchy plugin validate`). Two steps:
 
 ```sh
-# 1. The bar widget (installs as io.github.shivamnarkar47.omarchy-hotspot from the repo's manifest)
-omarchy plugin add https://github.com/shivamnarkar47/omarchy-hotspot --yes
-omarchy plugin enable io.github.shivamnarkar47.omarchy-hotspot --section right
+# 1. The bar widget (installs as io.github.chillboy0101.omarchy-hotspot from the repo's manifest)
+omarchy plugin add https://github.com/chillboy0101/omarchy-hotspot --yes
+omarchy plugin enable io.github.chillboy0101.omarchy-hotspot --section right
 
 # 2. The system helper (root helper, polkit rule, NM config, packages)
-git clone https://github.com/shivamnarkar47/omarchy-hotspot.git
+git clone https://github.com/chillboy0101/omarchy-hotspot.git
 cd omarchy-hotspot
 ./install.sh          # asks for your password once
 ```
@@ -83,7 +83,7 @@ cd omarchy-hotspot
 ## Removal
 
 ```sh
-omarchy plugin remove io.github.shivamnarkar47.omarchy-hotspot --yes      # bar widget
+omarchy plugin remove io.github.chillboy0101.omarchy-hotspot --yes      # bar widget
 sudo rm /usr/local/bin/omarchy-hotspot-helper  # system helper
 sudo rm /etc/polkit-1/rules.d/50-omarchy-hotspot.rules
 sudo rm /etc/NetworkManager/conf.d/99-unmanaged-ap0.conf

@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This document will help you get starte
 
 ### Reporting bugs
 
-Found a bug? Please [open an issue](https://github.com/shivamnarkar47/omarchy-hotspot/issues/new?template=bug_report.md) and include:
+Found a bug? Please [open an issue](https://github.com/chillboy0101/omarchy-hotspot/issues/new?template=bug_report.md) and include:
 
 - A clear description of what went wrong
 - Steps to reproduce the issue
