@@ -463,13 +463,27 @@ Panel {
           anchors.verticalCenter: parent.verticalCenter
         }
 
-        RowLayout {
-          id: heroActions
-          spacing: Style.space(8)
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
+          RowLayout {
+            id: heroActions
+            spacing: Style.space(8)
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
 
-          PanelActionButton {
+            Button {
+              visible: root.isOn
+              iconText: "󰐲"
+              tooltipText: "Show QR code"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              iconSize: Style.font.subtitle * 1.5
+              horizontalPadding: Style.space(5)
+              verticalPadding: Style.space(2)
+              hasCursor: root.qrHasCursor
+              onHovered: function(on) { if (on) root.setSection("actions", 1) }
+              onClicked: root.openQrOverlay()
+            }
+
+            PanelActionButton {
             visible: root.isOn
             iconText: "󰏫"
             tooltipText: "Edit network name"
@@ -592,18 +606,13 @@ Panel {
         }
       }
 
-      // ---------- QR card (only while broadcasting) ----------
-      PanelSeparator {
-        visible: root.isOn
-        foreground: root.foreground
-      }
-
       Column {
         visible: root.isOn
         width: parent.width
         spacing: Style.space(10)
 
-        Item {
+        /* QR is shown in the native-style overlay opened from the header. */
+        /*
           width: parent.width
           implicitHeight: Math.max(qrTitle.implicitHeight, qrRefreshRow.implicitHeight)
 
@@ -682,6 +691,7 @@ Panel {
           anchors.horizontalCenter: parent.horizontalCenter
         }
 
+        */
         // Password appears once, with its edit and copy actions.
         RowLayout {
           visible: !root.editingSsid && !root.editingPassword
