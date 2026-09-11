@@ -30,6 +30,7 @@ Panel {
   property string hotspotChannel: ""
   property string hotspotClients: ""
   property string lastError: ""
+  property bool showPassword: false
 
   // SSID editing state.
   property bool editingSsid: false
@@ -222,13 +223,12 @@ Panel {
 
   function statusLine() {
     if (isOn) {
-      var line = "ON · CH " + (hotspotChannel || "—") + " · " + (hotspotClients ? hotspotClients + " DEVICE" + (hotspotClients === "1" ? "" : "S") : "NO CLIENTS")
-      if (hotspotUplink) line += " · VIA " + hotspotUplink
-      return line
+      var count = Number(hotspotClients || 0)
+      return count > 0 ? count + " device" + (count === 1 ? "" : "s") + " connected" : "Ready to connect"
     }
-    if (isBusy) return "…"
-    if (isError) return "ERROR"
-    return "OFF"
+    if (isBusy) return "Updating…"
+    if (isError) return "Unable to start"
+    return "Off"
   }
 
   // ---- Cursor navigation ------------------------------------------------
@@ -346,7 +346,10 @@ Panel {
       id: passReadOut
       waitForEnd: true
       onStreamFinished: function() {
-        if (root.isOn) root.hotspotPassword = String(passReadOut.text || "").trim()
+        if (root.isOn) {
+          root.hotspotPassword = String(passReadOut.text || "").trim()
+          root.showPassword = false
+        }
       }
     }
   }
@@ -386,10 +389,12 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: root.iconText
-    active: root.isOn
+    // Keep the icon in the same neutral bar colour as Network and the other
+    // widgets; the on/off state is shown inside the popup and by the toggle.
+    active: false
     tooltipText: root.isOn
-      ? ("Hotspot on: " + root.hotspotSsid + " · " + (root.hotspotPassword || "—"))
-      : "Mobile hotspot: share this connection (Wi-Fi stays on)"
+      ? ("Hotspot · " + root.statusLine())
+      : "Hotspot"
 
     onPressed: function(btn) {
       if (btn !== Qt.LeftButton) return
@@ -453,6 +458,15 @@ Panel {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
 
+          PanelActionButton {
+            visible: root.isOn
+            iconText: "󰏫"
+            tooltipText: "Edit network name"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: root.startSsidEdit()
+          }
+
           ToggleSwitch {
             id: powerSwitch
             checked: root.isOn
@@ -499,7 +513,6 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
             font.bold: true
-            font.letterSpacing: 1.2
             elide: Text.ElideRight
           }
         }
@@ -641,70 +654,57 @@ Panel {
           anchors.horizontalCenter: parent.horizontalCenter
         }
 
-        // Normal state: SSID · Password
-        Row {
+        // Password appears once, with its edit and copy actions.
+        RowLayout {
           visible: !root.editingSsid && !root.editingPassword
-          anchors.horizontalCenter: parent.horizontalCenter
+          width: parent.width
           spacing: Style.space(8)
 
-          Row {
-            spacing: Style.space(4)
-
-            Text {
-              text: root.hotspotSsid
-              textFormat: Text.PlainText
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              font.bold: true
-            }
-
-            PanelActionButton {
-              iconText: "󰏫"
-              tooltipText: "Edit name"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: root.startSsidEdit()
-            }
-          }
-
           Text {
-            text: "·"
-            color: Qt.darker(root.foreground, 1.4)
+            text: "Password"
+            color: root.foreground
+            opacity: 0.65
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
           }
 
-          Row {
-            spacing: Style.space(4)
+          Text {
+            text: root.hotspotPassword ? (root.showPassword ? root.hotspotPassword : "••••••••••") : "—"
+            textFormat: Text.PlainText
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideRight
+          }
 
-            Text {
-              text: root.hotspotPassword || "—"
-              textFormat: Text.PlainText
-              color: Qt.darker(root.foreground, 1.4)
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
+          PanelActionButton {
+            iconText: root.showPassword ? "󰈈" : "󰈉"
+            tooltipText: root.showPassword ? "Hide password" : "Show password"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: root.showPassword = !root.showPassword
+          }
 
-            PanelActionButton {
-              iconText: "󰏫"
-              tooltipText: "Edit password"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              hasCursor: root.editHasCursor
-              onHovered: function(on) { if (on) root.setSection("actions", 2) }
-              onClicked: root.startPasswordEdit()
-            }
+          PanelActionButton {
+            iconText: "󰏫"
+            tooltipText: "Edit password"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            hasCursor: root.editHasCursor
+            onHovered: function(on) { if (on) root.setSection("actions", 2) }
+            onClicked: root.startPasswordEdit()
+          }
 
-            PanelActionButton {
-              iconText: root.copyFlash ? "" : ""
-              tooltipText: "Copy password"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              hasCursor: root.copyHasCursor
-              onHovered: function(on) { if (on) root.setSection("actions", 0) }
-              onClicked: root.copyPassword()
-            }
+          PanelActionButton {
+            iconText: root.copyFlash ? "" : ""
+            tooltipText: root.copyFlash ? "Copied" : "Copy password"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            hasCursor: root.copyHasCursor
+            onHovered: function(on) { if (on) root.setSection("actions", 0) }
+            onClicked: root.copyPassword()
           }
         }
 
@@ -805,58 +805,8 @@ Panel {
         }
       }
 
-      // ---------- Details ----------
-      PanelSeparator {
-        foreground: root.foreground
-      }
 
-      GridLayout {
-        width: parent.width
-        columns: 2
-        columnSpacing: Style.space(20)
-        rowSpacing: Style.spacing.labelGap
-
-        InfoLabel { text: "State" }
-        DetailValue { text: root.statusLine() }
-
-        InfoLabel { text: "Uplink" }
-        DetailValue { text: root.hotspotUplink || "—" }
-
-        InfoLabel { text: "Channel" }
-        DetailValue { text: root.hotspotChannel ? ("ch " + root.hotspotChannel) : "—" }
-
-        InfoLabel { text: "Clients" }
-        DetailValue { text: root.isOn ? (root.hotspotClients || "0") : "—" }
-
-        InfoLabel { text: "Security" }
-        DetailValue { text: "WPA2 · " + (root.hotspotPassword || "—") }
-      }
-
-      Text {
-        width: parent.width
-        text: root.isOn ? "Your Wi-Fi connection stays on while the hotspot is active." : "Start the hotspot to share this connection — your Wi-Fi stays on."
-        color: Qt.darker(root.foreground, 1.5)
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.Wrap
-      }
     }
   }
 
-  // ---- Local label/value components (mirroring omarchy.network) ---------
-  component InfoLabel: Text {
-    color: root.foreground
-    opacity: 0.6
-    font.family: root.fontFamily
-    font.pixelSize: Style.font.bodySmall
-  }
-
-  component DetailValue: Text {
-    textFormat: Text.PlainText
-    color: root.foreground
-    font.family: root.fontFamily
-    font.pixelSize: Style.font.bodySmall
-    horizontalAlignment: Text.AlignRight
-    Layout.fillWidth: true
-  }
 }
