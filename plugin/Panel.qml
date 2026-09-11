@@ -631,7 +631,7 @@ Panel {
         Rectangle {
           id: qrCanvas
           readonly property int moduleSize: root.qrSize > 0
-            ? Math.max(3, Math.floor(Math.min(Style.space(240), parent.width - Style.space(20)) / root.qrSize))
+            ? Math.max(4, Math.floor(Style.space(240) / root.qrSize))
             : 0
 
           visible: root.showingQr
