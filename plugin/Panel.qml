@@ -367,7 +367,9 @@ Panel {
   Timer {
     interval: 4000
     repeat: true
-    running: true
+    // Poll only while the panel is visible; avoid background pkexec/nmcli
+    // work competing with the bar and other shell widgets.
+    running: root.opened
     triggeredOnStart: true
     onTriggered: root.refresh()
   }
