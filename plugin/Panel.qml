@@ -50,7 +50,9 @@ Panel {
   property int qrSize: 0
   property bool qrLoading: false
 
-  readonly property string iconText: "󰀃"
+  // Wi-Fi tethering icon: same Material Design icon family as Omarchy's
+  // native network widget, with a fuller shape that reads at bar size.
+  readonly property string iconText: "󰖩"
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
