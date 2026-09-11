@@ -144,6 +144,12 @@ ensure_vif() {
   [ -n "$iface" ] || { echo "no-wifi-device" >&2; return 1; }
   phy="phy$(iw dev "$iface" info | awk '/wiphy/ { print $2; exit }')"
   iw phy "$phy" interface add "$VIF" type __ap
+  # The RTL8723DE firmware rejects concurrent interfaces with one MAC.
+  # Derive a stable locally administered address from the station address.
+  local ap_mac
+  ap_mac="$(cat "/sys/class/net/$iface/address")"
+  ap_mac="02${ap_mac:2}"
+  ip link set "$VIF" address "$ap_mac"
   for _ in $(seq 1 20); do
     vif_exists && return 0
     sleep 0.2
@@ -230,6 +236,12 @@ EOF
 
 start_ap() {
   ensure_state
+  # A failed or interrupted stop can leave ap0 behind while the service is
+  # inactive. Reusing that stale interface causes kernel "Name not unique"
+  # errors and can retain the station's MAC address.
+  if vif_exists && ! hotspot_on; then
+    iw dev "$VIF" del 2>/dev/null || true
+  fi
   ensure_vif
   write_hostapd_conf
 
