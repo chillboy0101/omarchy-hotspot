@@ -231,7 +231,7 @@ Panel {
     }
     if (isBusy) return ""
     if (isError) return "Unable to start"
-    return "Off"
+    return ""
   }
 
   // ---- Cursor navigation ------------------------------------------------
@@ -508,7 +508,7 @@ Panel {
           }
 
           Row {
-            visible: !root.isBusy
+            visible: root.isOn || root.isError
             spacing: Style.space(5)
 
             Rectangle {
