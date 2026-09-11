@@ -31,6 +31,7 @@ Panel {
   property string hotspotClients: ""
   property string lastError: ""
   property bool showPassword: false
+  property bool pendingToggleOn: false
 
   // SSID editing state.
   property bool editingSsid: false
@@ -91,6 +92,7 @@ Panel {
 
   function toggle() {
     if (toggleProc.running) return
+    pendingToggleOn = !isOn
     hotspotState = "busy"
     lastError = ""
     toggleProc.command = ["bash", "-c", "pkexec " + root.helper + " toggle"]
@@ -229,7 +231,7 @@ Panel {
       var count = Number(hotspotClients || 0)
       return count > 0 ? count + " device" + (count === 1 ? "" : "s") + " connected" : "Ready to connect"
     }
-    if (isBusy) return "Updating…"
+    if (isBusy) return pendingToggleOn ? "Starting…" : "Stopping…"
     if (isError) return "Unable to start"
     return "Off"
   }
