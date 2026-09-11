@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
@@ -31,6 +32,7 @@ Panel {
   property string hotspotClients: ""
   property string lastError: ""
   property bool showPassword: false
+  property bool qrOverlayOpen: false
 
   // SSID editing state.
   property bool editingSsid: false
@@ -80,6 +82,16 @@ Panel {
 
   function close() {
     root.controller.hide()
+  }
+
+  function openQrOverlay() {
+    if (!isOn) return
+    qrOverlayOpen = true
+    if (!showingQr) generateQr()
+  }
+
+  function closeQrOverlay() {
+    qrOverlayOpen = false
   }
 
   function refresh() {
@@ -621,7 +633,7 @@ Panel {
               verticalPadding: Style.space(2)
               hasCursor: root.qrHasCursor
               onHovered: function(on) { if (on) root.setSection("actions", 1) }
-              onClicked: root.generateQr()
+              onClicked: root.openQrOverlay()
             }
           }
         }
@@ -859,6 +871,95 @@ Panel {
       }
 
 
+    }
+  }
+
+  // Native-style QR presentation, matching omarchy.wifiqr's centered code
+  // and dark scrim while keeping the hotspot payload local to this plugin.
+  PanelWindow {
+    visible: root.qrOverlayOpen
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    exclusionMode: ExclusionMode.Ignore
+    WlrLayershell.namespace: "omarchy-hotspot-qr"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+
+    Rectangle {
+      anchors.fill: parent
+      color: Qt.rgba(0, 0, 0, 0.78)
+      MouseArea { anchors.fill: parent; onClicked: root.closeQrOverlay() }
+    }
+
+    Item {
+      id: qrOverlayContent
+      anchors.centerIn: parent
+      width: qrOverlayColumn.implicitWidth
+      height: qrOverlayColumn.implicitHeight
+      focus: true
+      Keys.onEscapePressed: root.closeQrOverlay()
+      MouseArea { anchors.fill: parent; onClicked: {} }
+
+      Column {
+        id: qrOverlayColumn
+        spacing: Style.space(16)
+
+        Text {
+          text: String(root.hotspotSsid || "Hotspot").toUpperCase()
+          color: Qt.rgba(1, 1, 1, 0.55)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+          font.letterSpacing: 2
+          anchors.horizontalCenter: parent.horizontalCenter
+        }
+
+        Rectangle {
+          id: qrOverlayCanvas
+          readonly property int moduleSize: root.qrSize > 0
+            ? Math.max(4, Math.floor(Style.space(240) / root.qrSize)) : 0
+          visible: root.showingQr
+          width: root.qrSize * moduleSize
+          height: width
+          color: "white"
+          radius: Style.cornerRadius
+          anchors.horizontalCenter: parent.horizontalCenter
+
+          Grid {
+            anchors.fill: parent
+            columns: root.qrSize
+            Repeater {
+              model: root.qrSize * root.qrSize
+              Rectangle {
+                required property int index
+                readonly property int matrixRow: Math.floor(index / root.qrSize)
+                readonly property int matrixColumn: index % root.qrSize
+                width: qrOverlayCanvas.moduleSize
+                height: width
+                color: root.qrRows[matrixRow].charAt(matrixColumn) === "1" ? "#111111" : "transparent"
+              }
+            }
+          }
+        }
+
+        Text {
+          visible: root.qrLoading
+          text: "Generating QR code…"
+          color: Qt.rgba(1, 1, 1, 0.55)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          anchors.horizontalCenter: parent.horizontalCenter
+        }
+
+        Text {
+          visible: root.showingQr
+          text: "Scan to join this network"
+          color: Qt.rgba(1, 1, 1, 0.55)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          anchors.horizontalCenter: parent.horizontalCenter
+        }
+      }
     }
   }
 
