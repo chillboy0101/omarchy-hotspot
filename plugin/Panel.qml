@@ -225,10 +225,7 @@ Panel {
   }
 
   function statusLine() {
-    if (isOn) {
-      var count = Number(hotspotClients || 0)
-      return count > 0 ? count + " device" + (count === 1 ? "" : "s") + " connected" : "Ready to connect"
-    }
+    if (isOn) return ""
     if (isBusy) return ""
     if (isError) return "Unable to start"
     return ""
@@ -508,7 +505,7 @@ Panel {
           }
 
           Row {
-            visible: root.isOn || root.isError
+            visible: root.isError
             spacing: Style.space(5)
 
             Rectangle {
@@ -530,14 +527,6 @@ Panel {
             }
           }
 
-          Text {
-            visible: root.isOn && root.hotspotUplink !== ""
-            text: "via " + root.hotspotUplink
-            color: Qt.darker(root.foreground, 1.5)
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            elide: Text.ElideRight
-          }
         }
       }
 
@@ -621,11 +610,15 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(6)
 
-            PanelActionButton {
+            Button {
+              id: qrRefreshButton
               iconText: "󰐲"
               tooltipText: "Regenerate QR"
               foreground: root.foreground
               fontFamily: root.fontFamily
+              iconSize: Style.font.subtitle * 1.5
+              horizontalPadding: Style.space(5)
+              verticalPadding: Style.space(2)
               hasCursor: root.qrHasCursor
               onHovered: function(on) { if (on) root.setSection("actions", 1) }
               onClicked: root.generateQr()
@@ -737,6 +730,34 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
             verticalAlignment: Text.AlignVCenter
+          }
+        }
+
+        PanelSeparator {
+          visible: root.isOn
+          foreground: root.foreground
+        }
+
+        RowLayout {
+          visible: root.isOn && !root.editingSsid && !root.editingPassword
+          width: parent.width
+
+          Text {
+            text: "Connected devices"
+            color: root.foreground
+            opacity: 0.65
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+
+          Item { Layout.fillWidth: true }
+
+          Text {
+            text: String(Number(root.hotspotClients || 0))
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            font.bold: true
           }
         }
 
