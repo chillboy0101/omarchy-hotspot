@@ -62,6 +62,7 @@ Panel {
   readonly property bool isBusy: hotspotState === "busy"
   readonly property bool isError: hotspotState === "error"
   readonly property bool showingQr: qrSize > 0 && !qrLoading && !isError
+  readonly property color stateColor: isError ? root.urgent : (isOn ? "#7bd88f" : Qt.darker(root.foreground, 1.4))
 
   // Copy feedback: icon flips to a checkmark briefly.
   property bool copyFlash: false
@@ -505,14 +506,34 @@ Panel {
             elide: Text.ElideRight
           }
 
+          Row {
+            spacing: Style.space(5)
+
+            Rectangle {
+              width: Style.space(6)
+              height: width
+              radius: width / 2
+              color: root.stateColor
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+              text: root.statusLine()
+              textFormat: Text.PlainText
+              color: root.stateColor
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              elide: Text.ElideRight
+            }
+          }
+
           Text {
-            width: parent.width
-            text: root.statusLine()
-            textFormat: Text.PlainText
-            color: root.isOn ? root.urgent : Qt.darker(root.foreground, 1.4)
+            visible: root.isOn && root.hotspotUplink !== ""
+            text: "via " + root.hotspotUplink
+            color: Qt.darker(root.foreground, 1.5)
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
-            font.bold: true
             elide: Text.ElideRight
           }
         }
@@ -615,7 +636,7 @@ Panel {
         Rectangle {
           id: qrCanvas
           readonly property int moduleSize: root.qrSize > 0
-            ? Math.max(4, Math.floor(Style.space(240) / root.qrSize))
+            ? Math.max(3, Math.floor(Math.min(Style.space(240), parent.width - Style.space(20)) / root.qrSize))
             : 0
 
           visible: root.showingQr
@@ -705,6 +726,15 @@ Panel {
             hasCursor: root.copyHasCursor
             onHovered: function(on) { if (on) root.setSection("actions", 0) }
             onClicked: root.copyPassword()
+          }
+
+          Text {
+            visible: root.copyFlash
+            text: "Copied"
+            color: root.stateColor
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            verticalAlignment: Text.AlignVCenter
           }
         }
 
