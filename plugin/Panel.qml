@@ -62,7 +62,7 @@ Panel {
   readonly property bool isBusy: hotspotState === "busy"
   readonly property bool isError: hotspotState === "error"
   readonly property bool showingQr: qrSize > 0 && !qrLoading && !isError
-  readonly property color stateColor: isError ? root.urgent : (isOn ? "#7bd88f" : Qt.darker(root.foreground, 1.4))
+  readonly property color stateColor: isError ? root.urgent : root.foreground
 
   // Copy feedback: icon flips to a checkmark briefly.
   property bool copyFlash: false
