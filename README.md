@@ -18,6 +18,7 @@ current connection — while the station link stays up the entire time.
 - 🎛️ **Interactive panel** — hero toggle, live status (uplink, channel, connected clients), copy-password, keyboard navigation (`j/k`, `Enter`, `Esc`).
 - 🌐 **Shares any uplink** — NAT follows the default route: Ethernet, phone tether, or a VLAN-tagged interface. Whatever carries your internet is shared.
 - 🔒 **WPA2** with a persistent random password — edit the hotspot name and optionally set a new password together in one labeled form; the password stays hidden unless revealed, and leaving it blank keeps the current password.
+- 📱 **Device identification** — shows a DHCP or local-network hostname when available, then falls back to the hardware vendor while retaining the MAC address in smaller text.
 - ⚡ **Passwordless controls** — a scoped polkit rule keeps status, toggling, and deliberate credential saves fast and prompt-free.
 
 ## How it works
@@ -85,6 +86,7 @@ cd omarchy-hotspot
 ```sh
 omarchy plugin remove io.github.chillboy0101.omarchy-hotspot --yes      # bar widget
 sudo rm /usr/local/bin/omarchy-hotspot-helper  # system helper
+sudo rm /usr/local/lib/omarchy-hotspot-device-identification.sh
 sudo rm /etc/polkit-1/rules.d/50-omarchy-hotspot.rules
 sudo rm /etc/NetworkManager/conf.d/99-unmanaged-ap0.conf
 nmcli general reload

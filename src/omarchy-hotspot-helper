@@ -20,6 +20,14 @@ AP_CONF="$RUN_DIR/hostapd.conf"
 AP_PID="$RUN_DIR/hostapd.pid"
 AP_SUBNET="10.42.0.0/24"
 AP_GATEWAY="10.42.0.1"
+LEASE_FILE="$RUN_DIR/dnsmasq.leases"
+OUI_FILE="/usr/share/hwdata/oui.txt"
+
+if [ -r /usr/local/lib/omarchy-hotspot-device-identification.sh ]; then
+  source /usr/local/lib/omarchy-hotspot-device-identification.sh
+else
+  source "$(dirname "${BASH_SOURCE[0]}")/device-identification.sh"
+fi
 
 station_iface() {
   nmcli -t -f DEVICE,TYPE device status 2>/dev/null | grep -E ':wifi$' | head -1 | cut -d: -f1
@@ -298,6 +306,7 @@ start_ap() {
     --except-interface=lo \
     --no-resolv \
     --log-dhcp \
+    --dhcp-leasefile="$LEASE_FILE" \
     "${servers[@]}" \
     --dhcp-range=10.42.0.10,10.42.0.200,255.255.255.0,12h
 }
@@ -336,11 +345,22 @@ status_text() {
 
 clients_text() {
   vif_exists || return 0
+  local leases="$LEASE_FILE"
+  [ -r "$leases" ] || leases="/var/lib/misc/dnsmasq.leases"
   iw dev "$VIF" station dump 2>/dev/null | awk '
     /^Station / { mac=$2; signal=""; connected="" }
     /^\tsignal:/ { signal=$2 }
     /^\tconnected time:/ { connected=$3; if (mac != "") print mac "\t" signal "\t" connected }
-  '
+  ' | while IFS=$'\t' read -r mac signal connected; do
+    local ip reverse_name label
+    ip="$(lease_ip "$mac" "$leases")"
+    reverse_name=""
+    if [ -n "$ip" ] && command -v avahi-resolve-address >/dev/null 2>&1; then
+      reverse_name="$(timeout 0.25 avahi-resolve-address "$ip" 2>/dev/null | awk '{print $2; exit}' || true)"
+    fi
+    label="$(device_label "$mac" "$leases" "$OUI_FILE" "$reverse_name")"
+    printf '%s\t%s\t%s\t%s\n' "$mac" "$signal" "$connected" "$label"
+  done
 }
 
 set_password() {

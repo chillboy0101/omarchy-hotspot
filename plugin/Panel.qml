@@ -374,7 +374,7 @@ Panel {
         var rows = String(text || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
         root.hotspotDevices = rows.map(function(line) {
           var p = line.split("\t")
-          return { mac: p[0] || "", signal: p[1] || "", connected: p[2] || "" }
+          return { mac: p[0] || "", signal: p[1] || "", connected: p[2] || "", name: p[3] || "Unknown device" }
         }).filter(function(device) { return device.mac !== "" })
       }
     }
@@ -925,13 +925,24 @@ Panel {
               width: parent.width
               spacing: Style.space(8)
 
-              Text {
-                text: modelData.mac
-                textFormat: Text.PlainText
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
+              Column {
                 Layout.fillWidth: true
+
+                Text {
+                  text: modelData.name
+                  textFormat: Text.PlainText
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+
+                Text {
+                  text: modelData.mac
+                  textFormat: Text.PlainText
+                  color: Qt.darker(root.foreground, 1.4)
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
               }
 
               Text {

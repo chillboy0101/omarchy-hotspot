@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPO_DIR="$(dirname "$(readlink -f "$0")")"
 HELPER_SRC="$REPO_DIR/src/omarchy-hotspot-helper"
+DEVICE_ID_SRC="$REPO_DIR/src/device-identification.sh"
 RULES_SRC="$REPO_DIR/config/50-omarchy-hotspot.rules"
 NM_CONF_SRC="$REPO_DIR/config/99-unmanaged-ap0.conf"
 if (( EUID != 0 )); then
@@ -31,6 +32,7 @@ pacman -S --noconfirm --needed hostapd dnsmasq
 
 echo "==> Installing helper to /usr/local/bin"
 install -m 755 "$HELPER_SRC" /usr/local/bin/omarchy-hotspot-helper
+install -m 644 "$DEVICE_ID_SRC" /usr/local/lib/omarchy-hotspot-device-identification.sh
 
 echo "==> Installing polkit rule (passwordless pkexec for the helper)"
 # Use awk (not sed) so the username is treated as a fixed string, never as a
