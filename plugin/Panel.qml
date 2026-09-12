@@ -71,6 +71,17 @@ Panel {
 
   // Copy feedback: icon flips to a checkmark briefly.
   property bool copyFlash: false
+  property int activityPhraseIndex: 0
+  readonly property var activityPhrases: [
+    "Wiring bits",
+    "Handling packets",
+    "Sharing airwaves",
+    "Routing bytes",
+    "Linking devices",
+    "Broadcasting packets",
+    "Keeping Wi-Fi flowing"
+  ]
+  readonly property string activityPhrase: activityPhrases[activityPhraseIndex % activityPhrases.length]
 
   // Cursor: "hero" (toggle switch) | "actions" (copy password, refresh QR)
   property bool cursorActive: false
@@ -399,6 +410,34 @@ Panel {
   }
 
   Timer {
+    interval: 2800
+    repeat: true
+    running: root.opened && root.isOn
+    onTriggered: activityPhraseSwap.restart()
+  }
+
+  SequentialAnimation {
+    id: activityPhraseSwap
+    PropertyAnimation {
+      target: heroActivity
+      property: "opacity"
+      to: 0.0
+      duration: 180
+      easing.type: Easing.OutQuad
+    }
+    ScriptAction {
+      script: root.activityPhraseIndex = (root.activityPhraseIndex + 1) % root.activityPhrases.length
+    }
+    PropertyAnimation {
+      target: heroActivity
+      property: "opacity"
+      to: 1.0
+      duration: 260
+      easing.type: Easing.InQuad
+    }
+  }
+
+  Timer {
     interval: 4000
     repeat: true
     // Poll only while the panel is visible; avoid background pkexec/nmcli
@@ -552,6 +591,20 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.title
             font.bold: true
+            elide: Text.ElideRight
+          }
+
+          Text {
+            id: heroActivity
+            visible: root.isOn
+            width: parent.width
+            text: root.activityPhrase.toUpperCase()
+            textFormat: Text.PlainText
+            color: Qt.darker(root.foreground, 1.4)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 1.2
             elide: Text.ElideRight
           }
 
