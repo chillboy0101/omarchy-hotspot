@@ -860,8 +860,6 @@ Panel {
             width: parent.width
             spacing: Style.space(8)
 
-            Item { Layout.fillWidth: true }
-
             Text {
               text: root.showPassword && root.hotspotPassword ? root.hotspotPassword : "••••••••••"
               textFormat: Text.PlainText
@@ -869,7 +867,7 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
               Layout.fillWidth: true
-              horizontalAlignment: Text.AlignRight
+              horizontalAlignment: Text.AlignLeft
               elide: Text.ElideRight
             }
 
