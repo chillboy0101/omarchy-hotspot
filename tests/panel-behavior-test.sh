@@ -10,4 +10,11 @@ if grep -Eq 'hotspotNameField\.(selectAll|forceActiveFocus)' <<<"$editor_flow"; 
   exit 1
 fi
 
+grep -q 'function startDeviceAlias' "$panel"
+grep -q 'function saveDeviceAlias' "$panel"
+grep -q 'set-device-alias' "$panel"
+grep -q 'aliasProc.write' "$panel"
+grep -q 'modelData.ip' "$panel"
+grep -q 'wrapMode: Text.Wrap' "$panel"
+
 echo "panel behavior tests passed"

@@ -24,14 +24,17 @@ transparency record for reviewers and as an operational reference.
 | 3 | Helper-derived text in the panel was rendered with default (rich-text) formatting, allowing injection if the helper output were malicious. | All helper-derived `Text` elements use `textFormat: Text.PlainText` (SSID, status line, password, password error, and the shared `DetailValue` component). |
 | 4 | The passphrase was embedded in a `bash -c` command and passed as `set-password` **argv**, exposing it via process command-line inspection. | `set-password` reads the passphrase from **stdin** (a single line). The panel feeds it over the `Process` stdin channel instead of argv. `copyPassword` reads the passphrase from the secret file (`cat … \| wl-copy`) rather than embedding it. |
 | 5 | `status` echoed the passphrase back to the bar over the `pkexec` stdout channel. | `status` no longer prints the passphrase. The bar reads it directly from the user-owned secret file via a dedicated `passReadProc`. |
-| 6 | The passwordless `pkexec` path exposed diagnostic subcommands (`debug`/`sniff`/`test`) that can read `hostapd.conf` or capture traffic. | The helper restricts the passwordless path to `status` / `toggle` / `set-password`. `debug`/`sniff`/`test` are rejected over `pkexec` ("Subcommand '…' is not permitted via pkexec") but remain available to a direct root invocation (e.g. `sudo omarchy-hotspot-helper debug`). |
+| 6 | The passwordless `pkexec` path exposed diagnostic subcommands (`debug`/`sniff`/`test`) that can read `hostapd.conf` or capture traffic. | The helper dispatch explicitly permits only panel operations (`status`, `clients`, `toggle`, credential changes, and device aliases) over `pkexec`. `debug`/`sniff`/`test` are rejected over `pkexec` but remain available to a direct root invocation. |
 | 7 | `install.sh` interpolated the username into a `sed` replacement (regex/`&` interpretation risk). | The polkit rule is generated with `awk -v`, treating the username as a fixed string. |
 | 8 | WIFI QR payload escaping omitted the double quote. | `qr.sh` now also escapes `"` per the WIFI QR standard. |
+| 9 | Device names originate from untrusted DHCP and local discovery data. | Lease metadata and aliases are control-character sanitized, passed as tab-separated plain text, and rendered with `Text.PlainText`. Discovery uses only bounded local mDNS, NetBIOS, and the installed OUI database; it performs no external lookup or fingerprint scan. |
 
 ## Runtime file permissions
 
 - `/var/lib/omarchy-hotspot/password` — `600`, owned by the installing user.
   Contains the WPA passphrase.
+- `/var/lib/omarchy-hotspot/device-aliases.tsv` — `600`, owned by the installing user.
+  Contains optional user-assigned device names.
 - `/run/omarchy-hotspot/` — `700` (root). `hostapd.conf` inside is `600` and
   contains the same passphrase; it is only read by root-owned `hostapd`.
 - `/usr/local/bin/omarchy-hotspot-helper` — `755`, root-owned and not writable

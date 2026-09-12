@@ -51,6 +51,12 @@ Panel {
   property bool savePasswordAfterSsid: false
   property bool showEditPassword: false
 
+  property string editingDeviceMac: ""
+  property string deviceAliasDraft: ""
+  property string deviceAliasError: ""
+  property bool deviceAliasBusy: false
+  property string pendingDeviceAlias: ""
+
   property var qrRows: []
   property int qrSize: 0
   property bool qrLoading: false
@@ -323,6 +329,34 @@ Panel {
     else editPasswordHideTimer.stop()
   }
 
+  function startDeviceAlias(device) {
+    if (deviceAliasBusy) return
+    editingDeviceMac = device.mac
+    deviceAliasDraft = device.name === "Unknown device" ? "" : device.name
+    deviceAliasError = ""
+  }
+
+  function cancelDeviceAlias() {
+    editingDeviceMac = ""
+    deviceAliasDraft = ""
+    deviceAliasError = ""
+    pendingDeviceAlias = ""
+  }
+
+  function saveDeviceAlias() {
+    if (deviceAliasBusy || !editingDeviceMac) return
+    var alias = deviceAliasDraft.trim()
+    if (alias.length > 48) {
+      deviceAliasError = "Maximum 48 characters"
+      return
+    }
+    deviceAliasBusy = true
+    deviceAliasError = ""
+    pendingDeviceAlias = alias
+    aliasProc.command = ["pkexec", root.helper, "set-device-alias"]
+    aliasProc.running = true
+  }
+
   function statusLine() {
     if (isOn) return ""
     if (isBusy) return ""
@@ -373,7 +407,14 @@ Panel {
         var rows = String(text || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
         root.hotspotDevices = rows.map(function(line) {
           var p = line.split("\t")
-          return { mac: p[0] || "", signal: p[1] || "", connected: p[2] || "", name: p[3] || "Unknown device" }
+          return {
+            mac: p[0] || "",
+            ip: p[1] || "",
+            signal: p[2] || "",
+            connected: p[3] || "",
+            name: p[4] || "Unknown device",
+            source: p[5] || "unknown"
+          }
         }).filter(function(device) { return device.mac !== "" })
       }
     }
@@ -398,6 +439,25 @@ Panel {
         root.refresh()
         if (root.isOn) root.generateQr()
       })
+    }
+  }
+
+  Process {
+    id: aliasProc
+    stdinEnabled: true
+    stdout: StdioCollector { id: aliasOut; waitForEnd: true }
+    stderr: StdioCollector { id: aliasErr; waitForEnd: true }
+    onStarted: function() {
+      aliasProc.write(root.editingDeviceMac + "\n" + root.pendingDeviceAlias + "\n")
+    }
+    onExited: function(code) {
+      deviceAliasBusy = false
+      if (code !== 0) {
+        deviceAliasError = String(aliasErr.text || aliasOut.text || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
+        return
+      }
+      cancelDeviceAlias()
+      root.refresh()
     }
   }
 
@@ -544,6 +604,7 @@ Panel {
   onOpenedChanged: {
     hidePassword()
     if (!opened) {
+      cancelDeviceAlias()
       showEditPassword = false
       editPasswordHideTimer.stop()
       if (!ssidBusy && !passwordBusy) {
@@ -630,7 +691,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      blocked: root.editingHotspot || root.ssidBusy || root.passwordBusy
+      blocked: root.editingHotspot || root.ssidBusy || root.passwordBusy || root.editingDeviceMac !== "" || root.deviceAliasBusy
 
       onMoveRequested: function(dx, dy) {
         if (dy !== 0) root.moveCursor(dy)
@@ -921,30 +982,66 @@ Panel {
 
             RowLayout {
               required property var modelData
+              readonly property bool editingAlias: root.editingDeviceMac === modelData.mac
               width: parent.width
               spacing: Style.space(8)
 
               Column {
                 Layout.fillWidth: true
+                spacing: Style.spacing.labelGap
 
                 Text {
+                  visible: !parent.parent.editingAlias
                   text: modelData.name
                   textFormat: Text.PlainText
                   color: root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
+                  width: parent.width
+                  wrapMode: Text.Wrap
+                }
+
+                TextField {
+                  visible: parent.parent.editingAlias
+                  width: parent.width
+                  text: root.deviceAliasDraft
+                  placeholderText: "Device name"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  foreground: root.foreground
+                  enabled: !root.deviceAliasBusy
+                  onTextChanged: if (visible && text !== root.deviceAliasDraft) {
+                    root.deviceAliasDraft = text
+                    root.deviceAliasError = ""
+                  }
+                  onAccepted: root.saveDeviceAlias()
+                  Keys.onEscapePressed: root.cancelDeviceAlias()
                 }
 
                 Text {
-                  text: modelData.mac
+                  text: modelData.mac + (modelData.ip ? "  ·  " + modelData.ip : "")
                   textFormat: Text.PlainText
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
+                  width: parent.width
+                  wrapMode: Text.WrapAnywhere
+                }
+
+                Text {
+                  visible: parent.parent.editingAlias && root.deviceAliasError !== ""
+                  text: root.deviceAliasError
+                  textFormat: Text.PlainText
+                  color: root.urgent
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  width: parent.width
+                  wrapMode: Text.Wrap
                 }
               }
 
               Text {
+                visible: !parent.editingAlias
                 text: modelData.signal ? modelData.signal + " dBm" : ""
                 textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.4)
@@ -953,11 +1050,41 @@ Panel {
               }
 
               Text {
+                visible: !parent.editingAlias
                 text: root.formatConnectedTime(modelData.connected)
                 textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.4)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
+              }
+
+              PanelActionButton {
+                visible: !parent.editingAlias
+                iconText: "󰏫"
+                tooltipText: "Name device"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                onClicked: root.startDeviceAlias(modelData)
+              }
+
+              PanelActionButton {
+                visible: parent.editingAlias
+                iconText: "󰄬"
+                tooltipText: "Save device name"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: !root.deviceAliasBusy
+                onClicked: root.saveDeviceAlias()
+              }
+
+              PanelActionButton {
+                visible: parent.editingAlias
+                iconText: "󰅙"
+                tooltipText: "Cancel"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: !root.deviceAliasBusy
+                onClicked: root.cancelDeviceAlias()
               }
             }
           }

@@ -20,7 +20,7 @@ Maintained by **[Wis-kal](https://github.com/chillboy0101)**.
 - 🎛️ **Interactive panel** — hero toggle, live status (uplink, channel, connected clients), copy-password, keyboard navigation (`j/k`, `Enter`, `Esc`).
 - 🌐 **Shares any uplink** — NAT follows the default route: Ethernet, phone tether, or a VLAN-tagged interface. Whatever carries your internet is shared.
 - 🔒 **WPA2** with a persistent random password — edit the hotspot name and optionally set a new password together in one labeled form; the password stays hidden unless revealed, and leaving it blank keeps the current password.
-- 📱 **Device identification** — shows a DHCP or local-network hostname when available, then falls back to the hardware vendor while retaining the MAC address in smaller text.
+- 📱 **Device identification** — caches DHCP, mDNS, NetBIOS, and hardware-vendor identity without slowing panel refreshes; an inline native editor remembers exact UTF-8 names and emoji when phone privacy hides them.
 - ⚡ **Passwordless controls** — a scoped polkit rule keeps status, toggling, and deliberate credential saves fast and prompt-free.
 
 ## How it works
@@ -89,6 +89,8 @@ cd omarchy-hotspot
 omarchy plugin remove io.github.chillboy0101.omarchy-hotspot --yes      # bar widget
 sudo rm /usr/local/bin/omarchy-hotspot-helper  # system helper
 sudo rm /usr/local/lib/omarchy-hotspot-device-identification.sh
+sudo rm /usr/local/lib/omarchy-hotspot-discover-device.sh
+sudo rm /usr/local/lib/omarchy-hotspot-lease-event.sh
 sudo rm /etc/polkit-1/rules.d/50-omarchy-hotspot.rules
 sudo rm /etc/NetworkManager/conf.d/99-unmanaged-ap0.conf
 nmcli general reload
@@ -96,6 +98,8 @@ sudo pacman -Rns hostapd dnsmasq               # optional: if nothing else uses 
 ```
 
 ## Usage
+
+Connected devices show their best locally available name with MAC/IP, signal, and connection time. Use the pencil beside a device to save an exact name such as `Carl 📱`; clearing the field removes the saved alias. Phones may omit their Settings name or use a private MAC, so automatic model detection is not guaranteed.
 
 - Click the hotspot icon in the bar → panel opens.
 - Flip the switch (or press `Enter`). Status shows uplink, channel, clients.
