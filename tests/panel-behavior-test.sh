@@ -33,5 +33,11 @@ grep -q 'focusSection === "devices"' "$panel"
 grep -q 'focusSection === "blocked"' "$panel"
 grep -q 'current: true' "$panel"
 grep -q 'readonly property bool showRowActions:' "$panel"
+grep -q 'id: deviceDetails' "$panel"
+grep -q 'elide: Text.ElideRight' "$panel"
+if grep -q 'wrapMode: Text.WrapAnywhere' "$panel"; then
+  echo "device details must remain on one aligned row" >&2
+  exit 1
+fi
 
 echo "panel behavior tests passed"

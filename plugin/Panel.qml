@@ -1153,14 +1153,38 @@ Panel {
                     Keys.onEscapePressed: root.cancelDeviceAlias()
                   }
 
-                  Text {
-                    text: deviceRow.modelData.mac + (deviceRow.modelData.ip ? "  ·  " + deviceRow.modelData.ip : "")
-                    textFormat: Text.PlainText
-                    color: Qt.darker(root.foreground, 1.4)
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
+                  RowLayout {
+                    id: deviceDetails
                     width: parent.width
-                    wrapMode: Text.WrapAnywhere
+                    spacing: Style.space(8)
+
+                    Text {
+                      Layout.fillWidth: true
+                      text: deviceRow.modelData.mac + (deviceRow.modelData.ip ? "  ·  " + deviceRow.modelData.ip : "")
+                      textFormat: Text.PlainText
+                      color: Qt.darker(root.foreground, 1.4)
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      elide: Text.ElideRight
+                    }
+
+                    Text {
+                      visible: !deviceRow.editingAlias && deviceRow.modelData.signal
+                      text: deviceRow.modelData.signal ? deviceRow.modelData.signal + " dBm" : ""
+                      textFormat: Text.PlainText
+                      color: Qt.darker(root.foreground, 1.4)
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    Text {
+                      visible: !deviceRow.editingAlias
+                      text: root.formatConnectedTime(deviceRow.modelData.connected)
+                      textFormat: Text.PlainText
+                      color: Qt.darker(root.foreground, 1.4)
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                    }
                   }
 
                   Text {
@@ -1173,24 +1197,6 @@ Panel {
                     width: parent.width
                     wrapMode: Text.Wrap
                   }
-                }
-
-                Text {
-                  visible: !deviceRow.editingAlias
-                  text: deviceRow.modelData.signal ? deviceRow.modelData.signal + " dBm" : ""
-                  textFormat: Text.PlainText
-                  color: Qt.darker(root.foreground, 1.4)
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
-
-                Text {
-                  visible: !deviceRow.editingAlias
-                  text: root.formatConnectedTime(deviceRow.modelData.connected)
-                  textFormat: Text.PlainText
-                  color: Qt.darker(root.foreground, 1.4)
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
                 }
 
                 PanelActionButton {
