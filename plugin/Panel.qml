@@ -98,10 +98,13 @@ Panel {
   ]
   readonly property string activityPhrase: activityPhrases[activityPhraseIndex % activityPhrases.length]
 
-  // Cursor: "hero" (toggle switch) | "actions" (copy password, QR, edit hotspot)
+  // One cursor is shared by the header controls and device rows, matching
+  // Omarchy's native panel navigation and hover behavior.
   property bool cursorActive: false
   property string focusSection: "hero"
   property int actionIndex: 0
+  property int deviceIndex: 0
+  property int blockedIndex: 0
   readonly property int actionCount: 3  // copy password, refresh QR, edit hotspot
 
   implicitWidth: button.implicitWidth
@@ -386,22 +389,68 @@ Panel {
   // ---- Cursor navigation ------------------------------------------------
   function moveCursor(dy) {
     if (!cursorActive) { cursorActive = true; return }
-    if (dy < 0 && focusSection === "actions") focusSection = "hero"
-    else if (dy > 0 && focusSection === "hero") { focusSection = "actions"; actionIndex = 0 }
+    if (dy < 0) {
+      if (focusSection === "actions") focusSection = "hero"
+      else if (focusSection === "devices") {
+        if (deviceIndex > 0) deviceIndex--
+        else focusSection = "actions"
+      } else if (focusSection === "blocked") {
+        if (blockedIndex > 0) blockedIndex--
+        else if (hotspotDevices.length > 0) {
+          focusSection = "devices"
+          deviceIndex = hotspotDevices.length - 1
+        } else focusSection = "actions"
+      }
+      return
+    }
+
+    if (focusSection === "hero") {
+      focusSection = "actions"
+      actionIndex = 0
+    } else if (focusSection === "actions") {
+      if (hotspotDevices.length > 0) {
+        focusSection = "devices"
+        deviceIndex = 0
+      } else if (blockedDevices.length > 0) {
+        focusSection = "blocked"
+        blockedIndex = 0
+      }
+    } else if (focusSection === "devices") {
+      if (deviceIndex < hotspotDevices.length - 1) deviceIndex++
+      else if (blockedDevices.length > 0) {
+        focusSection = "blocked"
+        blockedIndex = 0
+      }
+    } else if (focusSection === "blocked" && blockedIndex < blockedDevices.length - 1) {
+      blockedIndex++
+    }
   }
 
   function activate() {
     if (!cursorActive) return
     if (focusSection === "hero") toggleHotspot()
-    else if (actionIndex === 0) copyPassword()
-    else if (actionIndex === 1) generateQr()
-    else if (actionIndex === 2) startHotspotEdit()
+    else if (focusSection === "actions") {
+      if (actionIndex === 0) copyPassword()
+      else if (actionIndex === 1) generateQr()
+      else if (actionIndex === 2) startHotspotEdit()
+    } else if (focusSection === "devices" && deviceIndex >= 0 && deviceIndex < hotspotDevices.length) {
+      runDeviceAction("disconnect-device", hotspotDevices[deviceIndex].mac)
+    } else if (focusSection === "blocked" && blockedIndex >= 0 && blockedIndex < blockedDevices.length) {
+      runDeviceAction("unblock-device", blockedDevices[blockedIndex].mac)
+    }
   }
 
   function setSection(section, index) {
     cursorActive = true
     focusSection = section
     actionIndex = index === undefined ? 0 : index
+  }
+
+  function selectDeviceRow(section, index) {
+    cursorActive = true
+    focusSection = section
+    if (section === "devices") deviceIndex = index
+    else blockedIndex = index
   }
 
   readonly property bool heroHasCursor: cursorActive && focusSection === "hero"
@@ -1026,131 +1075,171 @@ Panel {
           Repeater {
             model: root.hotspotDevices
 
-            RowLayout {
+            CursorSurface {
+              id: deviceRow
               required property var modelData
+              required property int index
               readonly property bool editingAlias: root.editingDeviceMac === modelData.mac
+              readonly property bool rowSelected: root.cursorActive && root.focusSection === "devices" && root.deviceIndex === index
+              readonly property bool showRowActions: !editingAlias && (deviceRowMouse.containsMouse || rowSelected)
+              property bool nameActionHovered: false
+              property bool blockActionHovered: false
               width: parent.width
-              spacing: Style.space(8)
+              implicitHeight: deviceContent.implicitHeight + Style.spacing.rowPaddingX
+              hasCursor: rowSelected
+              current: true
+              foreground: root.foreground
+              fill: root.hoverFill
+              currentFill: root.selectedFill
 
-              Column {
-                Layout.fillWidth: true
-                spacing: Style.spacing.labelGap
-
-                Text {
-                  visible: !parent.parent.editingAlias
-                  text: modelData.name
-                  textFormat: Text.PlainText
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
-                  width: parent.width
-                  wrapMode: Text.Wrap
+              MouseArea {
+                id: deviceRowMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                enabled: !deviceRow.editingAlias && root.deviceActionBusyMac === ""
+                onContainsMouseChanged: if (containsMouse) root.selectDeviceRow("devices", deviceRow.index)
+                onClicked: {
+                  root.selectDeviceRow("devices", deviceRow.index)
+                  root.runDeviceAction("disconnect-device", deviceRow.modelData.mac)
                 }
+              }
 
-                TextField {
-                  visible: parent.parent.editingAlias
-                  width: parent.width
-                  text: root.deviceAliasDraft
-                  placeholderText: "Device name"
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
-                  foreground: root.foreground
-                  enabled: !root.deviceAliasBusy
-                  onTextChanged: if (visible && text !== root.deviceAliasDraft) {
-                    root.deviceAliasDraft = text
-                    root.deviceAliasError = ""
+              PanelToolTip {
+                visible: deviceRowMouse.containsMouse && !deviceRow.editingAlias
+                  && !deviceRow.nameActionHovered && !deviceRow.blockActionHovered
+                text: "Disconnect"
+                fontFamily: root.fontFamily
+              }
+
+              RowLayout {
+                id: deviceContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Style.space(10)
+                anchors.rightMargin: Style.space(10)
+                spacing: Style.space(8)
+
+                Column {
+                  Layout.fillWidth: true
+                  spacing: Style.spacing.labelGap
+
+                  Text {
+                    visible: !deviceRow.editingAlias
+                    text: deviceRow.modelData.name
+                    textFormat: Text.PlainText
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    width: parent.width
+                    wrapMode: Text.Wrap
                   }
-                  onAccepted: root.saveDeviceAlias()
-                  Keys.onEscapePressed: root.cancelDeviceAlias()
+
+                  TextField {
+                    visible: deviceRow.editingAlias
+                    width: parent.width
+                    text: root.deviceAliasDraft
+                    placeholderText: "Device name"
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    foreground: root.foreground
+                    enabled: !root.deviceAliasBusy
+                    onTextChanged: if (visible && text !== root.deviceAliasDraft) {
+                      root.deviceAliasDraft = text
+                      root.deviceAliasError = ""
+                    }
+                    onAccepted: root.saveDeviceAlias()
+                    Keys.onEscapePressed: root.cancelDeviceAlias()
+                  }
+
+                  Text {
+                    text: deviceRow.modelData.mac + (deviceRow.modelData.ip ? "  ·  " + deviceRow.modelData.ip : "")
+                    textFormat: Text.PlainText
+                    color: Qt.darker(root.foreground, 1.4)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    width: parent.width
+                    wrapMode: Text.WrapAnywhere
+                  }
+
+                  Text {
+                    visible: deviceRow.editingAlias && root.deviceAliasError !== ""
+                    text: root.deviceAliasError
+                    textFormat: Text.PlainText
+                    color: root.urgent
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                  }
                 }
 
                 Text {
-                  text: modelData.mac + (modelData.ip ? "  ·  " + modelData.ip : "")
+                  visible: !deviceRow.editingAlias
+                  text: deviceRow.modelData.signal ? deviceRow.modelData.signal + " dBm" : ""
                   textFormat: Text.PlainText
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
-                  width: parent.width
-                  wrapMode: Text.WrapAnywhere
                 }
 
                 Text {
-                  visible: parent.parent.editingAlias && root.deviceAliasError !== ""
-                  text: root.deviceAliasError
+                  visible: !deviceRow.editingAlias
+                  text: root.formatConnectedTime(deviceRow.modelData.connected)
                   textFormat: Text.PlainText
-                  color: root.urgent
+                  color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
-                  width: parent.width
-                  wrapMode: Text.Wrap
                 }
-              }
 
-              Text {
-                visible: !parent.editingAlias
-                text: modelData.signal ? modelData.signal + " dBm" : ""
-                textFormat: Text.PlainText
-                color: Qt.darker(root.foreground, 1.4)
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-              }
+                PanelActionButton {
+                  visible: deviceRow.showRowActions
+                  iconText: "󰏫"
+                  tooltipText: "Name device"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onHovered: function(on) {
+                    deviceRow.nameActionHovered = on
+                    if (on) root.selectDeviceRow("devices", deviceRow.index)
+                  }
+                  onClicked: root.startDeviceAlias(deviceRow.modelData)
+                }
 
-              Text {
-                visible: !parent.editingAlias
-                text: root.formatConnectedTime(modelData.connected)
-                textFormat: Text.PlainText
-                color: Qt.darker(root.foreground, 1.4)
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-              }
+                PanelActionButton {
+                  visible: deviceRow.showRowActions
+                  iconText: "󰅙"
+                  tooltipText: "Block"
+                  foreground: root.foreground
+                  hoverColor: root.urgent
+                  fontFamily: root.fontFamily
+                  enabled: root.deviceActionBusyMac === ""
+                  onHovered: function(on) {
+                    deviceRow.blockActionHovered = on
+                    if (on) root.selectDeviceRow("devices", deviceRow.index)
+                  }
+                  onClicked: root.runDeviceAction("block-device", deviceRow.modelData.mac)
+                }
 
-              PanelActionButton {
-                visible: !parent.editingAlias
-                iconText: "󰏫"
-                tooltipText: "Name device"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                onClicked: root.startDeviceAlias(modelData)
-              }
+                PanelActionButton {
+                  visible: deviceRow.editingAlias
+                  iconText: "󰄬"
+                  tooltipText: "Save device name"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  enabled: !root.deviceAliasBusy
+                  onClicked: root.saveDeviceAlias()
+                }
 
-              PanelActionButton {
-                visible: !parent.editingAlias
-                iconText: "󰖪"
-                tooltipText: "Disconnect"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                enabled: root.deviceActionBusyMac === ""
-                onClicked: root.runDeviceAction("disconnect-device", modelData.mac)
-              }
-
-              PanelActionButton {
-                visible: !parent.editingAlias
-                iconText: "󰅛"
-                tooltipText: "Block"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                enabled: root.deviceActionBusyMac === ""
-                onClicked: root.runDeviceAction("block-device", modelData.mac)
-              }
-
-              PanelActionButton {
-                visible: parent.editingAlias
-                iconText: "󰄬"
-                tooltipText: "Save device name"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                enabled: !root.deviceAliasBusy
-                onClicked: root.saveDeviceAlias()
-              }
-
-              PanelActionButton {
-                visible: parent.editingAlias
-                iconText: "󰅙"
-                tooltipText: "Cancel"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                enabled: !root.deviceAliasBusy
-                onClicked: root.cancelDeviceAlias()
+                PanelActionButton {
+                  visible: deviceRow.editingAlias
+                  iconText: "󰅙"
+                  tooltipText: "Cancel"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  enabled: !root.deviceAliasBusy
+                  onClicked: root.cancelDeviceAlias()
+                }
               }
             }
           }
@@ -1181,40 +1270,68 @@ Panel {
           Repeater {
             model: root.blockedDevices
 
-            RowLayout {
+            CursorSurface {
+              id: blockedRow
               required property var modelData
+              required property int index
+              readonly property bool rowSelected: root.cursorActive && root.focusSection === "blocked" && root.blockedIndex === index
               width: parent.width
-              spacing: Style.space(8)
+              implicitHeight: blockedContent.implicitHeight + Style.spacing.rowPaddingX
+              hasCursor: rowSelected
+              foreground: root.foreground
+              fill: root.hoverFill
+              currentFill: root.selectedFill
 
-              Column {
-                Layout.fillWidth: true
-
-                Text {
-                  text: modelData.name
-                  textFormat: Text.PlainText
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
-                  width: parent.width
-                  wrapMode: Text.Wrap
-                }
-
-                Text {
-                  text: modelData.mac
-                  textFormat: Text.PlainText
-                  color: Qt.darker(root.foreground, 1.4)
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+              MouseArea {
+                id: blockedRowMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                enabled: root.deviceActionBusyMac === ""
+                onContainsMouseChanged: if (containsMouse) root.selectDeviceRow("blocked", blockedRow.index)
+                onClicked: {
+                  root.selectDeviceRow("blocked", blockedRow.index)
+                  root.runDeviceAction("unblock-device", blockedRow.modelData.mac)
                 }
               }
 
-              PanelActionButton {
-                iconText: "󰅚"
-                tooltipText: "Unblock"
-                foreground: root.foreground
+              PanelToolTip {
+                visible: blockedRowMouse.containsMouse
+                text: "Unblock"
                 fontFamily: root.fontFamily
-                enabled: root.deviceActionBusyMac === ""
-                onClicked: root.runDeviceAction("unblock-device", modelData.mac)
+              }
+
+              RowLayout {
+                id: blockedContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Style.space(10)
+                anchors.rightMargin: Style.space(10)
+                spacing: Style.space(8)
+
+                Column {
+                  Layout.fillWidth: true
+
+                  Text {
+                    text: blockedRow.modelData.name
+                    textFormat: Text.PlainText
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                  }
+
+                  Text {
+                    text: blockedRow.modelData.mac
+                    textFormat: Text.PlainText
+                    color: Qt.darker(root.foreground, 1.4)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+                }
+
               }
             }
           }

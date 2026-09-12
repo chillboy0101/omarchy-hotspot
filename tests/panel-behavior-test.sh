@@ -20,8 +20,18 @@ grep -q 'disconnect-device' "$panel"
 grep -q 'block-device' "$panel"
 grep -q 'unblock-device' "$panel"
 grep -q 'text: "BLOCKED DEVICES"' "$panel"
-grep -q 'tooltipText: "Disconnect"' "$panel"
+grep -q 'text: "Disconnect"' "$panel"
+if grep -q 'tooltipText: "Disconnect"' "$panel"; then
+  echo "disconnect must use the native row tooltip, not a separate button" >&2
+  exit 1
+fi
 grep -q 'tooltipText: "Block"' "$panel"
-grep -q 'tooltipText: "Unblock"' "$panel"
+grep -q 'text: "Unblock"' "$panel"
+grep -q 'property int deviceIndex:' "$panel"
+grep -q 'property int blockedIndex:' "$panel"
+grep -q 'focusSection === "devices"' "$panel"
+grep -q 'focusSection === "blocked"' "$panel"
+grep -q 'current: true' "$panel"
+grep -q 'readonly property bool showRowActions:' "$panel"
 
 echo "panel behavior tests passed"
