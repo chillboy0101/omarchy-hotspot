@@ -1040,7 +1040,10 @@ Panel {
             foreground: root.foreground
             horizontalPadding: Style.space(8)
             verticalPadding: Style.space(3)
-            onTextChanged: if (visible && text !== root.passwordDraft) root.passwordDraft = text
+            onTextChanged: if (visible && text !== root.passwordDraft) {
+              root.passwordDraft = text
+              root.passwordError = ""
+            }
             onAccepted: root.savePassword()
             Keys.onEscapePressed: root.cancelPasswordEdit()
           }
@@ -1073,7 +1076,7 @@ Panel {
         }
 
         Text {
-          visible: root.passwordError !== ""
+          visible: root.editingPassword && root.passwordError !== ""
           text: root.passwordError
           textFormat: Text.PlainText
           color: root.urgent
