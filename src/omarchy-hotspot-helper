@@ -24,10 +24,12 @@ LEASE_FILE="$RUN_DIR/dnsmasq.leases"
 OUI_FILE="/usr/share/hwdata/oui.txt"
 
 if [ -r /usr/local/lib/omarchy-hotspot-device-identification.sh ]; then
-  # shellcheck disable=SC1091 -- installed alongside this helper by install.sh
+  # Installed alongside this helper by install.sh.
+  # shellcheck disable=SC1091
   source /usr/local/lib/omarchy-hotspot-device-identification.sh
 else
-  # shellcheck disable=SC1091 -- development fallback resolved at runtime
+  # Development fallback resolved at runtime.
+  # shellcheck disable=SC1091
   source "$(dirname "${BASH_SOURCE[0]}")/device-identification.sh"
 fi
 
