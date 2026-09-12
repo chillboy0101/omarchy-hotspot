@@ -1056,7 +1056,6 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               focusable: true
-              bordered: true
               enabled: !root.ssidBusy && !root.passwordBusy
               onClicked: root.saveHotspotEdit()
             }
@@ -1067,7 +1066,6 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               focusable: true
-              bordered: true
               enabled: !root.ssidBusy && !root.passwordBusy
               onClicked: root.cancelHotspotEdit()
             }
