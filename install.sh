@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Omarchy Hotspot installer — system bits.
 # (The bar widget itself installs via: omarchy plugin add <repo-url>)
-# Installs the root helper, the scoped polkit rule, and the
+# Installs the root helper, the passwordless polkit rule, and the
 # NetworkManager exemption for the AP virtual interface.
 set -euo pipefail
 
@@ -32,7 +32,7 @@ pacman -S --noconfirm --needed hostapd dnsmasq
 echo "==> Installing helper to /usr/local/bin"
 install -m 755 "$HELPER_SRC" /usr/local/bin/omarchy-hotspot-helper
 
-echo "==> Installing scoped polkit rule"
+echo "==> Installing polkit rule (passwordless pkexec for the helper)"
 # Use awk (not sed) so the username is treated as a fixed string, never as a
 # regex or replacement pattern.
 awk -v u="$USER" '{ gsub(/__USER__/, u) } 1' "$RULES_SRC" > /etc/polkit-1/rules.d/50-omarchy-hotspot.rules
