@@ -840,165 +840,102 @@ Panel {
         width: parent.width
         spacing: Style.space(10)
 
-        /* QR is shown in the native-style overlay opened from the header. */
-        /*
-          width: parent.width
-          implicitHeight: Math.max(qrTitle.implicitHeight, qrRefreshRow.implicitHeight)
-
-          PanelSectionHeader {
-            id: qrTitle
-            text: "SCAN TO JOIN"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-          }
-
-          Row {
-            id: qrRefreshRow
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(6)
-
-            Button {
-              id: qrRefreshButton
-              iconText: "󰐲"
-              tooltipText: "Regenerate QR"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              iconSize: Style.font.subtitle * 1.5
-              horizontalPadding: Style.space(5)
-              verticalPadding: Style.space(2)
-              hasCursor: root.qrHasCursor
-              onHovered: function(on) { if (on) root.setSection("actions", 1) }
-              onClicked: root.openQrOverlay()
-            }
-          }
+        PanelSeparator {
+          visible: !root.editingHotspot
+          foreground: root.foreground
         }
 
-        // White rounded canvas; only dark modules paint. Same rendering
-        // approach as omarchy.wifiqr.
-        Rectangle {
-          id: qrCanvas
-          readonly property int moduleSize: root.qrSize > 0
-            ? Math.max(4, Math.floor(Style.space(240) / root.qrSize))
-            : 0
-
-          visible: root.showingQr
-          width: root.qrSize * moduleSize
-          height: width
-          color: "white"
-          radius: Style.cornerRadius
-          anchors.horizontalCenter: parent.horizontalCenter
-
-          Grid {
-            anchors.fill: parent
-            columns: root.qrSize
-
-            Repeater {
-              model: root.qrSize * root.qrSize
-
-              Rectangle {
-                required property int index
-                readonly property int matrixRow: Math.floor(index / root.qrSize)
-                readonly property int matrixColumn: index % root.qrSize
-
-                width: qrCanvas.moduleSize
-                height: qrCanvas.moduleSize
-                color: root.qrRows[matrixRow].charAt(matrixColumn) === "1" ? "#111111" : "transparent"
-              }
-            }
-          }
-        }
-
-        Text {
-          visible: root.qrLoading
-          text: "Generating QR code…"
-          color: Qt.darker(root.foreground, 1.4)
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
-          anchors.horizontalCenter: parent.horizontalCenter
-        }
-
-        */
-        // Password appears once, with its edit and copy actions.
-        RowLayout {
+        Column {
           visible: !root.editingHotspot
           width: parent.width
-          spacing: Style.space(8)
+          spacing: Style.space(10)
 
-          Text {
-            text: "Password"
-            color: root.foreground
-            opacity: 0.65
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-          }
-
-          Text {
-            text: root.showPassword && root.hotspotPassword ? root.hotspotPassword : "••••••••••"
-            textFormat: Text.PlainText
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-            Layout.fillWidth: true
-            horizontalAlignment: Text.AlignRight
-            elide: Text.ElideRight
-          }
-
-          PanelActionButton {
-            iconText: root.showPassword ? "󰈈" : "󰈉"
-            tooltipText: root.showPassword ? "Hide password" : "Show password"
+          PanelSectionHeader {
+            text: "PASSWORD"
             foreground: root.foreground
             fontFamily: root.fontFamily
-            onClicked: root.togglePasswordVisibility()
           }
 
-          PanelActionButton {
-            iconText: root.copyFlash ? "" : ""
-            tooltipText: root.copyFlash ? "Copied" : "Copy password"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            hasCursor: root.copyHasCursor
-            onHovered: function(on) { if (on) root.setSection("actions", 0) }
-            onClicked: root.copyPassword()
-          }
+          RowLayout {
+            width: parent.width
+            spacing: Style.space(8)
 
-          Text {
-            visible: root.copyFlash
-            text: "Copied"
-            color: root.stateColor
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            verticalAlignment: Text.AlignVCenter
+            Item { Layout.fillWidth: true }
+
+            Text {
+              text: root.showPassword && root.hotspotPassword ? root.hotspotPassword : "••••••••••"
+              textFormat: Text.PlainText
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              Layout.fillWidth: true
+              horizontalAlignment: Text.AlignRight
+              elide: Text.ElideRight
+            }
+
+            PanelActionButton {
+              iconText: root.showPassword ? "󰈈" : "󰈉"
+              tooltipText: root.showPassword ? "Hide password" : "Show password"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.togglePasswordVisibility()
+            }
+
+            PanelActionButton {
+              iconText: root.copyFlash ? "" : ""
+              tooltipText: root.copyFlash ? "Copied" : "Copy password"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              hasCursor: root.copyHasCursor
+              onHovered: function(on) { if (on) root.setSection("actions", 0) }
+              onClicked: root.copyPassword()
+            }
+
+            Text {
+              visible: root.copyFlash
+              text: "Copied"
+              textFormat: Text.PlainText
+              color: root.stateColor
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              verticalAlignment: Text.AlignVCenter
+            }
           }
         }
 
         PanelSeparator {
-          visible: root.visualOn
+          visible: !root.editingHotspot
           foreground: root.foreground
         }
 
-        RowLayout {
-          visible: root.visualOn && !root.editingHotspot
-          width: parent.width
-
-          Text {
-            text: "Devices"
-            color: root.foreground
-            opacity: 0.65
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-          }
-
-          Item { Layout.fillWidth: true }
-
-        }
-
         Column {
-          visible: root.visualOn && root.hotspotDevices.length > 0 && !root.editingHotspot
+          visible: !root.editingHotspot
           width: parent.width
-          spacing: Style.space(6)
+          spacing: Style.space(10)
+
+          RowLayout {
+            width: parent.width
+            spacing: Style.space(8)
+
+            PanelSectionHeader {
+              text: "DEVICES"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              Layout.fillWidth: true
+            }
+
+            Text {
+              text: root.hotspotClients !== ""
+                ? String(root.hotspotClients)
+                : String(root.hotspotDevices.length)
+              textFormat: Text.PlainText
+              color: Qt.darker(root.foreground, 1.4)
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              Layout.alignment: Qt.AlignVCenter
+            }
+          }
 
           Repeater {
             model: root.hotspotDevices
@@ -1010,14 +947,16 @@ Panel {
 
               Text {
                 text: modelData.mac
+                textFormat: Text.PlainText
                 color: root.foreground
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: Style.font.body
                 Layout.fillWidth: true
               }
 
               Text {
                 text: modelData.signal ? modelData.signal + " dBm" : ""
+                textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.4)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -1025,6 +964,7 @@ Panel {
 
               Text {
                 text: root.formatConnectedTime(modelData.connected)
+                textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.4)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -1040,17 +980,15 @@ Panel {
           width: parent.width
           spacing: Style.space(8)
 
-          RowLayout {
+          Column {
             width: parent.width
-            spacing: Style.space(8)
+            spacing: Style.spacing.labelGap
 
-            Text {
+            PanelSectionHeader {
               textFormat: Text.PlainText
-              text: "Hotspot name"
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              Layout.preferredWidth: Style.space(100)
+              text: "HOTSPOT NAME"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
             }
 
             TextField {
@@ -1063,7 +1001,7 @@ Panel {
               horizontalPadding: Style.spacing.controlGap
               verticalPadding: Style.spacing.controlPaddingY
               enabled: !root.ssidBusy && !root.passwordBusy
-              Layout.fillWidth: true
+              width: parent.width
               onTextChanged: if (visible && text !== root.ssidDraft) {
                 root.ssidDraft = text
                 root.ssidError = ""
@@ -1073,46 +1011,48 @@ Panel {
             }
           }
 
-          RowLayout {
+          Column {
             width: parent.width
-            spacing: Style.space(8)
+            spacing: Style.spacing.labelGap
 
-            Text {
-              textFormat: Text.PlainText
-              text: "Password"
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              Layout.preferredWidth: Style.space(100)
-            }
-
-            TextField {
-              id: hotspotPasswordField
-              text: root.passwordDraft
-              placeholderText: "Leave blank to keep current"
-              echoMode: root.showEditPassword ? TextInput.Normal : TextInput.Password
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              foreground: root.foreground
-              horizontalPadding: Style.spacing.controlGap
-              verticalPadding: Style.spacing.controlPaddingY
-              enabled: !root.ssidBusy && !root.passwordBusy
-              Layout.fillWidth: true
-              onTextChanged: if (visible && text !== root.passwordDraft) {
-                root.passwordDraft = text
-                root.passwordError = ""
-              }
-              onAccepted: root.saveHotspotEdit()
-              Keys.onEscapePressed: root.cancelHotspotEdit()
-            }
-
-            PanelActionButton {
-              iconText: root.showEditPassword ? "󰈈" : "󰈉"
-              tooltipText: root.showEditPassword ? "Hide new password" : "Show new password"
+            PanelSectionHeader {
+              text: "PASSWORD"
               foreground: root.foreground
               fontFamily: root.fontFamily
-              enabled: !root.passwordBusy
-              onClicked: root.toggleEditPasswordVisibility()
+            }
+
+            RowLayout {
+              width: parent.width
+              spacing: Style.space(8)
+
+              TextField {
+                id: hotspotPasswordField
+                text: root.passwordDraft
+                placeholderText: "Leave blank to keep current"
+                echoMode: root.showEditPassword ? TextInput.Normal : TextInput.Password
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                foreground: root.foreground
+                horizontalPadding: Style.spacing.controlGap
+                verticalPadding: Style.spacing.controlPaddingY
+                enabled: !root.ssidBusy && !root.passwordBusy
+                Layout.fillWidth: true
+                onTextChanged: if (visible && text !== root.passwordDraft) {
+                  root.passwordDraft = text
+                  root.passwordError = ""
+                }
+                onAccepted: root.saveHotspotEdit()
+                Keys.onEscapePressed: root.cancelHotspotEdit()
+              }
+
+              PanelActionButton {
+                iconText: root.showEditPassword ? "󰈈" : "󰈉"
+                tooltipText: root.showEditPassword ? "Hide new password" : "Show new password"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: !root.passwordBusy
+                onClicked: root.toggleEditPasswordVisibility()
+              }
             }
           }
 
