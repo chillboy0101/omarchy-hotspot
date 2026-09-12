@@ -22,6 +22,9 @@ AP_SUBNET="10.42.0.0/24"
 AP_GATEWAY="10.42.0.1"
 LEASE_FILE="$RUN_DIR/dnsmasq.leases"
 OUI_FILE="/usr/share/hwdata/oui.txt"
+METADATA_FILE="$RUN_DIR/device-metadata.tsv"
+DISCOVERY_FILE="$RUN_DIR/device-discovery.tsv"
+ALIASES_FILE="$STATE_DIR/device-aliases.tsv"
 
 if [ -r /usr/local/lib/omarchy-hotspot-device-identification.sh ]; then
   # Installed alongside this helper by install.sh.
@@ -133,6 +136,10 @@ protect_passfile() {
   if [ -f "$SSID_FILE" ]; then
     chown "$(real_user)" "$SSID_FILE" 2>/dev/null || true
     chmod 644 "$SSID_FILE" 2>/dev/null || true
+  fi
+  if [ -f "$ALIASES_FILE" ]; then
+    chown "$(real_user)" "$ALIASES_FILE" 2>/dev/null || true
+    chmod 600 "$ALIASES_FILE"
   fi
 }
 
@@ -357,15 +364,26 @@ clients_text() {
     /^\tsignal:/ { signal=$2 }
     /^\tconnected time:/ { connected=$3; if (mac != "") print mac "\t" signal "\t" connected }
   ' | while IFS=$'\t' read -r mac signal connected; do
-    local ip reverse_name label
+    local ip resolved label source
     ip="$(lease_ip "$mac" "$leases")"
-    reverse_name=""
-    if [ -n "$ip" ] && command -v avahi-resolve-address >/dev/null 2>&1; then
-      reverse_name="$(timeout 0.25 avahi-resolve-address "$ip" 2>/dev/null | awk '{print $2; exit}' || true)"
-    fi
-    label="$(device_label "$mac" "$leases" "$OUI_FILE" "$reverse_name")"
-    printf '%s\t%s\t%s\t%s\n' "$mac" "$signal" "$connected" "$label"
+    resolved="$(resolve_device "$mac" "$ip" "$METADATA_FILE" "$DISCOVERY_FILE" "$ALIASES_FILE" "$OUI_FILE")"
+    label="${resolved%%$'\t'*}"
+    source="${resolved#*$'\t'}"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$mac" "$ip" "$signal" "$connected" "$label" "$source"
   done
+}
+
+set_alias_from_stdin() {
+  local mac alias
+  IFS= read -r mac
+  IFS= read -r alias || true
+  if [ -z "$alias" ]; then
+    remove_device_alias "$mac" "$ALIASES_FILE"
+  else
+    set_device_alias "$mac" "$alias" "$ALIASES_FILE"
+  fi
+  protect_passfile
+  echo "ok"
 }
 
 set_password() {
@@ -490,6 +508,7 @@ helper_dispatch() {
       ;;
     set-password) set_password ;;
     set-ssid) set_ssid ;;
+    set-device-alias) set_alias_from_stdin ;;
     *)
       if [ -n "${PKEXEC_UID:-}" ]; then
         echo "Subcommand '$1' is not permitted via pkexec" >&2
@@ -511,7 +530,7 @@ helper_dispatch() {
           pgrep -a hostapd 2>&1
           ;;
         *)
-          echo "usage: omarchy-hotspot-helper {status|toggle|set-password|set-ssid|debug|test}" >&2
+          echo "usage: omarchy-hotspot-helper {status|clients|toggle|set-password|set-ssid|set-device-alias|debug|test}" >&2
           exit 2
           ;;
       esac

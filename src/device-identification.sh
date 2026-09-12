@@ -35,3 +35,81 @@ device_label() {
   fi
   printf '%s\n' "${label:-Unknown device}" | tr -d '\t\r\n'
 }
+
+tsv_value() {
+  local mac="${1,,}" file="$2" field="$3"
+  [ -r "$file" ] || return 0
+  awk -F '\t' -v wanted="$mac" -v field="$field" 'tolower($1) == wanted { print $field; exit }' "$file"
+}
+
+resolve_device() {
+  local mac="${1,,}" ip="$2" metadata_file="$3" discovery_file="$4" aliases_file="$5" oui_file="$6"
+  local label source discovery_ip
+
+  label="$(tsv_value "$mac" "$aliases_file" 2)"
+  source="alias"
+  if [ -z "$label" ]; then
+    label="$(tsv_value "$mac" "$metadata_file" 3)"
+    source="dhcp"
+  fi
+  if [ -z "$label" ]; then
+    discovery_ip="$(tsv_value "$mac" "$discovery_file" 2)"
+    if [ "$discovery_ip" = "$ip" ]; then
+      label="$(tsv_value "$mac" "$discovery_file" 3)"
+      label="${label%.local}"
+    fi
+    source="mdns"
+  fi
+  if [ -z "$label" ] && [ "$discovery_ip" = "$ip" ]; then
+    label="$(tsv_value "$mac" "$discovery_file" 4)"
+    source="netbios"
+  fi
+  if [ -z "$label" ]; then
+    label="$(mac_vendor "$mac" "$oui_file")"
+    [ -z "$label" ] || label="$label device"
+    source="vendor"
+  fi
+  if [ -z "$label" ]; then
+    label="Unknown device"
+    source="unknown"
+  fi
+  label="$(printf '%s' "$label" | LC_ALL=C tr -d '\000-\037\177')"
+  printf '%s\t%s\n' "$label" "$source"
+}
+
+valid_mac() {
+  [[ "$1" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]
+}
+
+set_device_alias() {
+  local mac="${1,,}" alias="$2" aliases_file="$3" length clean tmp
+  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
+  [ -n "$alias" ] || { echo "Device name cannot be empty" >&2; return 1; }
+  printf '%s' "$alias" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1 || { echo "Device name must be valid UTF-8" >&2; return 1; }
+  clean="$(printf '%s' "$alias" | LC_ALL=C tr -d '\000-\037\177')"
+  [ "$clean" = "$alias" ] || { echo "Device name contains unsupported control characters" >&2; return 1; }
+  length="$(printf '%s' "$alias" | wc -m)"
+  [ "$length" -le 48 ] || { echo "Device name must be 48 characters or fewer" >&2; return 1; }
+  mkdir -p "$(dirname "$aliases_file")"
+  touch "$aliases_file"
+  chmod 600 "$aliases_file"
+  exec 8>"$aliases_file.lock"
+  flock 8
+  tmp="$(mktemp "${aliases_file}.XXXXXX")"
+  awk -F '\t' -v wanted="$mac" 'tolower($1) != wanted' "$aliases_file" >"$tmp"
+  printf '%s\t%s\n' "$mac" "$alias" >>"$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$aliases_file"
+}
+
+remove_device_alias() {
+  local mac="${1,,}" aliases_file="$2" tmp
+  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
+  [ -e "$aliases_file" ] || return 0
+  exec 8>"$aliases_file.lock"
+  flock 8
+  tmp="$(mktemp "${aliases_file}.XXXXXX")"
+  awk -F '\t' -v wanted="$mac" 'tolower($1) != wanted' "$aliases_file" >"$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$aliases_file"
+}

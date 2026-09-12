@@ -40,3 +40,10 @@ if [ "$action" = del ] && [ -f "$discovery_file" ]; then
   chmod 600 "$tmp"
   mv -f "$tmp" "$discovery_file"
 fi
+
+if [ "$action" != del ]; then
+  discover_command="${OMARCHY_HOTSPOT_DISCOVER_COMMAND:-/usr/local/lib/omarchy-hotspot-discover-device.sh}"
+  if [ -x "$discover_command" ]; then
+    "$discover_command" "$mac" "$ip" >/dev/null 2>&1 &
+  fi
+fi
