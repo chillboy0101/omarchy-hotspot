@@ -31,8 +31,14 @@ grep -q 'property int deviceIndex:' "$panel"
 grep -q 'property int blockedIndex:' "$panel"
 grep -q 'focusSection === "devices"' "$panel"
 grep -q 'focusSection === "blocked"' "$panel"
-grep -q 'current: true' "$panel"
+if grep -q 'current: true' "$panel"; then
+  echo "connected device rows must not remain permanently selected" >&2
+  exit 1
+fi
 grep -q 'readonly property bool showRowActions:' "$panel"
+grep -q 'id: deviceRowHover' "$panel"
+grep -q 'id: blockedRowHover' "$panel"
+grep -q 'function clearDeviceRowSelection' "$panel"
 grep -q 'id: deviceDetails' "$panel"
 grep -q 'elide: Text.ElideRight' "$panel"
 if grep -q 'wrapMode: Text.WrapAnywhere' "$panel"; then

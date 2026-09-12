@@ -453,6 +453,13 @@ Panel {
     else blockedIndex = index
   }
 
+  function clearDeviceRowSelection(section, index) {
+    if (!cursorActive || focusSection !== section) return
+    if (section === "devices" && deviceIndex !== index) return
+    if (section === "blocked" && blockedIndex !== index) return
+    cursorActive = false
+  }
+
   readonly property bool heroHasCursor: cursorActive && focusSection === "hero"
   readonly property bool copyHasCursor: cursorActive && focusSection === "actions" && actionIndex === 0
   readonly property bool qrHasCursor: cursorActive && focusSection === "actions" && actionIndex === 1
@@ -1081,16 +1088,23 @@ Panel {
               required property int index
               readonly property bool editingAlias: root.editingDeviceMac === modelData.mac
               readonly property bool rowSelected: root.cursorActive && root.focusSection === "devices" && root.deviceIndex === index
-              readonly property bool showRowActions: !editingAlias && (deviceRowMouse.containsMouse || rowSelected)
+              readonly property bool showRowActions: !editingAlias && (deviceRowHover.hovered || rowSelected)
               property bool nameActionHovered: false
               property bool blockActionHovered: false
               width: parent.width
               implicitHeight: deviceContent.implicitHeight + Style.spacing.rowPaddingX
               hasCursor: rowSelected
-              current: true
               foreground: root.foreground
               fill: root.hoverFill
               currentFill: root.selectedFill
+
+              HoverHandler {
+                id: deviceRowHover
+                onHoveredChanged: {
+                  if (hovered) root.selectDeviceRow("devices", deviceRow.index)
+                  else root.clearDeviceRowSelection("devices", deviceRow.index)
+                }
+              }
 
               MouseArea {
                 id: deviceRowMouse
@@ -1098,7 +1112,6 @@ Panel {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 enabled: !deviceRow.editingAlias && root.deviceActionBusyMac === ""
-                onContainsMouseChanged: if (containsMouse) root.selectDeviceRow("devices", deviceRow.index)
                 onClicked: {
                   root.selectDeviceRow("devices", deviceRow.index)
                   root.runDeviceAction("disconnect-device", deviceRow.modelData.mac)
@@ -1106,7 +1119,7 @@ Panel {
               }
 
               PanelToolTip {
-                visible: deviceRowMouse.containsMouse && !deviceRow.editingAlias
+                visible: deviceRowHover.hovered && !deviceRow.editingAlias
                   && !deviceRow.nameActionHovered && !deviceRow.blockActionHovered
                 text: "Disconnect"
                 fontFamily: root.fontFamily
@@ -1288,13 +1301,20 @@ Panel {
               fill: root.hoverFill
               currentFill: root.selectedFill
 
+              HoverHandler {
+                id: blockedRowHover
+                onHoveredChanged: {
+                  if (hovered) root.selectDeviceRow("blocked", blockedRow.index)
+                  else root.clearDeviceRowSelection("blocked", blockedRow.index)
+                }
+              }
+
               MouseArea {
                 id: blockedRowMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 enabled: root.deviceActionBusyMac === ""
-                onContainsMouseChanged: if (containsMouse) root.selectDeviceRow("blocked", blockedRow.index)
                 onClicked: {
                   root.selectDeviceRow("blocked", blockedRow.index)
                   root.runDeviceAction("unblock-device", blockedRow.modelData.mac)
@@ -1302,7 +1322,7 @@ Panel {
               }
 
               PanelToolTip {
-                visible: blockedRowMouse.containsMouse
+                visible: blockedRowHover.hovered
                 text: "Unblock"
                 fontFamily: root.fontFamily
               }
