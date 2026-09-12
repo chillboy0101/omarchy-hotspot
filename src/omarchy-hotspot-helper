@@ -311,6 +311,7 @@ start_ap() {
     --no-resolv \
     --log-dhcp \
     --dhcp-leasefile="$LEASE_FILE" \
+    --dhcp-script=/usr/local/lib/omarchy-hotspot-lease-event.sh \
     "${servers[@]}" \
     --dhcp-range=10.42.0.10,10.42.0.200,255.255.255.0,12h
 }
