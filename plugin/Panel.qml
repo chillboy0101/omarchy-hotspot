@@ -34,6 +34,7 @@ Panel {
   property string lastError: ""
   property bool showPassword: false
   property bool qrOverlayOpen: false
+  property bool pendingOn: false
 
   // SSID editing state.
   property bool editingSsid: false
@@ -53,9 +54,10 @@ Panel {
   property int qrSize: 0
   property bool qrLoading: false
 
-  // Wi-Fi tethering icon: same Material Design icon family as Omarchy's
-  // native network widget, with a fuller shape that reads at bar size.
-  readonly property string iconText: "󰖩"
+  // Paired Material Design tethering glyphs, matching the native panels'
+  // distinct connected/disconnected icon treatment.
+  readonly property string iconOn: "󰖩"
+  readonly property string iconOff: "󰖪"
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -66,6 +68,9 @@ Panel {
   readonly property bool isOn: hotspotState === "on"
   readonly property bool isBusy: hotspotState === "busy"
   readonly property bool isError: hotspotState === "error"
+  readonly property bool visualOn: isBusy ? pendingOn : isOn
+  readonly property string iconText: visualOn ? iconOn : iconOff
+  readonly property color barIconColor: visualOn ? foreground : Qt.darker(foreground, 1.55)
   readonly property bool showingQr: qrSize > 0 && !qrLoading && !isError
   readonly property color stateColor: isError ? root.urgent : root.foreground
 
@@ -109,19 +114,20 @@ Panel {
   function refresh() {
     if (statusProc.running) return
     // pkexec (passwordless via polkit rule): channel + client counts need root.
-    statusProc.command = ["bash", "-c", "pkexec " + root.helper + " status"]
+    statusProc.command = ["pkexec", root.helper, "status"]
     statusProc.running = true
     if (isOn && !clientsProc.running) {
-      clientsProc.command = ["bash", "-c", "pkexec " + root.helper + " clients"]
+      clientsProc.command = ["pkexec", root.helper, "clients"]
       clientsProc.running = true
     }
   }
 
   function toggle() {
     if (toggleProc.running) return
+    pendingOn = !isOn
     hotspotState = "busy"
     lastError = ""
-    toggleProc.command = ["bash", "-c", "pkexec " + root.helper + " toggle"]
+    toggleProc.command = ["pkexec", root.helper, "toggle"]
     toggleProc.running = true
   }
 
@@ -141,7 +147,7 @@ Panel {
       hotspotChannel = parts[3] || ""
       hotspotClients = parts[4] || ""
       if (!clientsProc.running) {
-        clientsProc.command = ["bash", "-c", "pkexec " + root.helper + " clients"]
+        clientsProc.command = ["pkexec", root.helper, "clients"]
         clientsProc.running = true
       }
       if (qrSize === 0 && !qrProc.running) Qt.callLater(generateQr)
@@ -168,7 +174,7 @@ Panel {
 
   function readPassword() {
     if (passReadProc.running) return
-    passReadProc.command = ["bash", "-c", "cat " + root.passwordFile]
+    passReadProc.command = ["cat", root.passwordFile]
     passReadProc.running = true
   }
 
@@ -223,7 +229,7 @@ Panel {
     // Feed the passphrase over stdin (not argv) so it is never exposed in the
     // process command line. The helper reads it from stdin.
     pendingPassword = draft
-    passProc.command = ["bash", "-c", "pkexec " + root.helper + " set-password"]
+    passProc.command = ["pkexec", root.helper, "set-password"]
     passProc.running = true
   }
 
@@ -253,7 +259,7 @@ Panel {
     ssidBusy = true
     ssidError = ""
     pendingSsid = draft
-    ssidProc.command = ["bash", "-c", "pkexec " + root.helper + " set-ssid"]
+    ssidProc.command = ["pkexec", root.helper, "set-ssid"]
     ssidProc.running = true
   }
 
@@ -438,7 +444,7 @@ Panel {
   }
 
   Timer {
-    interval: 4000
+    interval: 1500
     repeat: true
     // Poll only while the panel is visible; avoid background pkexec/nmcli
     // work competing with the bar and other shell widgets.
@@ -461,14 +467,15 @@ Panel {
     if (isOn && qrSize === 0 && opened) Qt.callLater(generateQr)
   }
 
+  Component.onCompleted: Qt.callLater(refresh)
+
   // ---- Bar button -------------------------------------------------------
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: root.iconText
-    // Keep the icon in the same neutral bar colour as Network and the other
-    // widgets; the on/off state is shown inside the popup and by the toggle.
+    foreground: root.barIconColor
     active: false
 
     onPressed: function(btn) {
@@ -520,9 +527,10 @@ Panel {
         Text {
           id: heroIcon
           text: root.iconText
-          color: root.isOn ? root.urgent : root.foreground
+          color: root.barIconColor
           font.family: root.fontFamily
           font.pixelSize: Style.font.display
+          opacity: root.visualOn ? 1.0 : 0.5
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
         }
@@ -558,7 +566,7 @@ Panel {
 
           ToggleSwitch {
             id: powerSwitch
-            checked: root.isOn
+            checked: root.visualOn
             busy: root.isBusy
             hasCursor: root.heroHasCursor
             foreground: root.foreground
@@ -596,9 +604,9 @@ Panel {
 
           Text {
             id: heroActivity
-            visible: root.isOn
+            visible: !root.isError
             width: parent.width
-            text: root.activityPhrase.toUpperCase()
+            text: root.visualOn ? root.activityPhrase.toUpperCase() : "TURNED OFF"
             textFormat: Text.PlainText
             color: Qt.darker(root.foreground, 1.4)
             font.family: root.fontFamily
