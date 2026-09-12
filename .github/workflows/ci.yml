@@ -17,7 +17,7 @@ jobs:
 
       - name: Shellcheck (helper, installer, QR generator)
         run: |
-          shellcheck src/omarchy-hotspot-helper install.sh plugin/qr.sh
+          shellcheck src/omarchy-hotspot-helper src/device-identification.sh install.sh plugin/qr.sh tests/device-identification-test.sh
 
       - name: Bash syntax check
         run: |
