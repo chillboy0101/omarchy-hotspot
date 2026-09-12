@@ -911,28 +911,10 @@ Panel {
           width: parent.width
           spacing: Style.space(10)
 
-          RowLayout {
-            width: parent.width
-            spacing: Style.space(8)
-
-            PanelSectionHeader {
-              text: "DEVICES"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              Layout.fillWidth: true
-            }
-
-            Text {
-              text: root.hotspotClients !== ""
-                ? String(root.hotspotClients)
-                : String(root.hotspotDevices.length)
-              textFormat: Text.PlainText
-              color: Qt.darker(root.foreground, 1.4)
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              Layout.alignment: Qt.AlignVCenter
-            }
+          PanelSectionHeader {
+            text: "DEVICES"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
           }
 
           Repeater {
@@ -992,7 +974,7 @@ Panel {
             TextField {
               id: hotspotNameField
               text: root.ssidDraft
-              placeholderText: "Wi-Fi network name"
+              placeholderText: "Hotspot name"
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
               foreground: root.foreground
