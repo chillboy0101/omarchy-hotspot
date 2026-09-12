@@ -453,13 +453,6 @@ Panel {
     else blockedIndex = index
   }
 
-  function clearDeviceRowSelection(section, index) {
-    if (!cursorActive || focusSection !== section) return
-    if (section === "devices" && deviceIndex !== index) return
-    if (section === "blocked" && blockedIndex !== index) return
-    cursorActive = false
-  }
-
   readonly property bool heroHasCursor: cursorActive && focusSection === "hero"
   readonly property bool copyHasCursor: cursorActive && focusSection === "actions" && actionIndex === 0
   readonly property bool qrHasCursor: cursorActive && focusSection === "actions" && actionIndex === 1
@@ -1101,10 +1094,7 @@ Panel {
 
               HoverHandler {
                 id: deviceRowHover
-                onHoveredChanged: {
-                  if (hovered) root.selectDeviceRow("devices", deviceRow.index)
-                  else root.clearDeviceRowSelection("devices", deviceRow.index)
-                }
+                onHoveredChanged: if (hovered) root.selectDeviceRow("devices", deviceRow.index)
               }
 
               MouseArea {
@@ -1304,10 +1294,7 @@ Panel {
 
               HoverHandler {
                 id: blockedRowHover
-                onHoveredChanged: {
-                  if (hovered) root.selectDeviceRow("blocked", blockedRow.index)
-                  else root.clearDeviceRowSelection("blocked", blockedRow.index)
-                }
+                onHoveredChanged: if (hovered) root.selectDeviceRow("blocked", blockedRow.index)
               }
 
               MouseArea {

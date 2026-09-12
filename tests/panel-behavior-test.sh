@@ -40,7 +40,10 @@ grep -q 'readonly property bool canRename:' "$panel"
 grep -q 'visible: deviceRow.showRowActions && deviceRow.canRename' "$panel"
 grep -q 'id: deviceRowHover' "$panel"
 grep -q 'id: blockedRowHover' "$panel"
-grep -q 'function clearDeviceRowSelection' "$panel"
+if grep -q 'function clearDeviceRowSelection' "$panel"; then
+  echo "device cursor must remain on the last hovered row" >&2
+  exit 1
+fi
 grep -q 'id: deviceDetails' "$panel"
 grep -q 'elide: Text.ElideRight' "$panel"
 if grep -q 'wrapMode: Text.WrapAnywhere' "$panel"; then
