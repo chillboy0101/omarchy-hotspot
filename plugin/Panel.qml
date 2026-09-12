@@ -112,7 +112,7 @@ Panel {
   }
 
   function refresh() {
-    if (statusProc.running) return
+    if (statusProc.running || isBusy) return
     // pkexec (passwordless via polkit rule): channel + client counts need root.
     statusProc.command = ["pkexec", root.helper, "status"]
     statusProc.running = true
@@ -122,13 +122,16 @@ Panel {
     }
   }
 
-  function toggle() {
-    if (toggleProc.running) return
+  function toggleHotspot() {
+    if (toggleProc.running || isBusy) return
     pendingOn = !isOn
     hotspotState = "busy"
     lastError = ""
-    toggleProc.command = ["pkexec", root.helper, "toggle"]
-    toggleProc.running = true
+    // Commit the whole panel's requested state before starting backend work.
+    Qt.callLater(function() {
+      toggleProc.command = ["pkexec", root.helper, "toggle"]
+      toggleProc.running = true
+    })
   }
 
   function generateQr() {
@@ -139,6 +142,8 @@ Panel {
   }
 
   function applyStatus(raw) {
+    // A poll started before the click must not undo the requested UI state.
+    if (isBusy) return
     var parts = String(raw || "").trim().split(/\s+/)
     if (parts[0] === "on") {
       hotspotState = "on"
@@ -164,7 +169,6 @@ Panel {
     } else {
       hotspotState = "off"
       if (parts[1] && !root.editingSsid) hotspotSsid = parts[1]
-      hotspotPassword = ""
       hotspotUplink = ""
       hotspotChannel = ""
       hotspotClients = ""
@@ -176,6 +180,36 @@ Panel {
     if (passReadProc.running) return
     passReadProc.command = ["cat", root.passwordFile]
     passReadProc.running = true
+  }
+
+  function formatConnectedTime(value) {
+    var seconds = Math.max(0, Math.floor(Number(value) || 0))
+    if (seconds < 60) return seconds + "s"
+
+    var minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return minutes + "m"
+
+    var hours = Math.floor(minutes / 60)
+    var remainingMinutes = minutes % 60
+    if (hours < 24) return hours + "h" + (remainingMinutes ? " " + remainingMinutes + "m" : "")
+
+    var days = Math.floor(hours / 24)
+    var remainingHours = hours % 24
+    return days + "d" + (remainingHours ? " " + remainingHours + "h" : "")
+  }
+
+  function hidePassword() {
+    showPassword = false
+    passwordHideTimer.stop()
+  }
+
+  function togglePasswordVisibility() {
+    if (showPassword) {
+      hidePassword()
+    } else if (opened && visualOn && hotspotPassword && !editingPassword) {
+      showPassword = true
+      passwordHideTimer.restart()
+    }
   }
 
   function applyQr(raw) {
@@ -204,7 +238,8 @@ Panel {
   }
 
   function startPasswordEdit() {
-    if (passwordBusy) return
+    if (passwordBusy || isBusy) return
+    hidePassword()
     if (editingSsid) cancelSsidEdit()
     passwordDraft = hotspotPassword || ""
     passwordError = ""
@@ -234,7 +269,7 @@ Panel {
   }
 
   function startSsidEdit() {
-    if (ssidBusy) return
+    if (ssidBusy || isBusy) return
     if (editingPassword) cancelPasswordEdit()
     ssidDraft = hotspotSsid || "OmarchyHotspot"
     ssidError = ""
@@ -279,7 +314,7 @@ Panel {
 
   function activate() {
     if (!cursorActive) return
-    if (focusSection === "hero") toggle()
+    if (focusSection === "hero") toggleHotspot()
     else if (actionIndex === 0) copyPassword()
     else if (actionIndex === 1) generateQr()
     else if (actionIndex === 2) startPasswordEdit()
@@ -329,6 +364,10 @@ Panel {
         var detail = String(toggleErr.text || toggleOut.text || "").replace(/\s+/g, " ").trim()
         root.lastError = detail ? detail.slice(0, 120) : ("exit " + code)
         root.hotspotState = "error"
+      } else {
+        // The command completed; do not wait for another status process
+        // before settling the switch and its associated controls.
+        root.hotspotState = root.pendingOn ? "on" : "off"
       }
       Qt.callLater(function() {
         root.refresh()
@@ -400,12 +439,20 @@ Panel {
       id: passReadOut
       waitForEnd: true
       onStreamFinished: function() {
-        if (root.isOn) {
-          root.hotspotPassword = String(passReadOut.text || "").trim()
-          root.showPassword = false
+        if (root.opened) {
+          var password = String(passReadOut.text || "").trim()
+          if (password !== root.hotspotPassword) root.hidePassword()
+          root.hotspotPassword = password
         }
       }
     }
+  }
+
+  Timer {
+    id: passwordHideTimer
+    interval: 7000
+    repeat: false
+    onTriggered: root.hidePassword()
   }
 
   Timer {
@@ -454,8 +501,10 @@ Panel {
   }
 
   onOpenedChanged: {
+    hidePassword()
     if (opened) {
       refresh()
+      readPassword()
       if (isOn) generateQr()
       cursorActive = false
       focusSection = "hero"
@@ -464,6 +513,7 @@ Panel {
   }
 
   onHotspotStateChanged: {
+    if (!isOn) hidePassword()
     if (isOn && qrSize === 0 && opened) Qt.callLater(generateQr)
   }
 
@@ -477,6 +527,24 @@ Panel {
     text: root.iconText
     foreground: root.barIconColor
     active: false
+    iconComponent: Component {
+      OpticalGlyph {
+        text: root.iconOn
+        fontFamily: root.fontFamily
+        fontSize: Style.bar.iconFont
+        color: root.barIconColor
+        // Use the same explicit slash geometry as native Tailscale.
+        Rectangle {
+          visible: !root.visualOn
+          anchors.centerIn: parent
+          width: parent.tightWidth * 1.1
+          height: Math.max(1, Style.bar.iconFont * 0.09)
+          radius: height / 2
+          color: root.barIconColor
+          rotation: -45
+        }
+      }
+    }
 
     onPressed: function(btn) {
       if (btn !== Qt.LeftButton) return
@@ -493,6 +561,15 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
+    // The plugin bar API exposes only this plugin's click targets. Leave
+    // the actual bar surface clickable so native buttons receive the first
+    // click and the shared popout coordinator performs the handoff.
+    mask: Region {
+      x: panel.barPos === "left" ? panel.barW : 0
+      y: panel.barPos === "top" ? panel.barH : 0
+      width: Math.max(0, panel.screenW - ((panel.barPos === "left" || panel.barPos === "right") ? panel.barW : 0))
+      height: Math.max(0, panel.screenH - ((panel.barPos === "top" || panel.barPos === "bottom") ? panel.barH : 0))
+    }
     contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
 
@@ -526,7 +603,16 @@ Panel {
 
         Text {
           id: heroIcon
-          text: root.iconText
+          text: root.iconOn
+          Rectangle {
+            visible: !root.visualOn
+            anchors.centerIn: parent
+            width: heroIcon.paintedWidth * 1.1
+            height: Math.max(1, Style.font.display * 0.09)
+            radius: height / 2
+            color: root.barIconColor
+            rotation: -45
+          }
           color: root.barIconColor
           font.family: root.fontFamily
           font.pixelSize: Style.font.display
@@ -542,7 +628,7 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
 
             Button {
-              visible: root.isOn
+              visible: root.visualOn
               iconText: "󰐲"
               tooltipText: "Show QR code"
               foreground: root.foreground
@@ -556,7 +642,7 @@ Panel {
             }
 
             PanelActionButton {
-            visible: root.isOn
+            visible: root.visualOn
             iconText: "󰏫"
             tooltipText: "Edit network name"
             foreground: root.foreground
@@ -572,7 +658,7 @@ Panel {
             foreground: root.foreground
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setSection("hero") }
-            onToggled: root.toggle()
+            onToggled: root.toggleHotspot()
 
             PanelToolTip {
               visible: powerSwitch.containsMouse
@@ -693,7 +779,7 @@ Panel {
       }
 
       Column {
-        visible: root.isOn
+        visible: root.visualOn
         width: parent.width
         spacing: Style.space(10)
 
@@ -793,7 +879,7 @@ Panel {
           }
 
           Text {
-            text: root.hotspotPassword ? (root.showPassword ? root.hotspotPassword : "••••••••••") : "—"
+            text: root.showPassword && root.hotspotPassword ? root.hotspotPassword : "••••••••••"
             textFormat: Text.PlainText
             color: root.foreground
             font.family: root.fontFamily
@@ -808,7 +894,7 @@ Panel {
             tooltipText: root.showPassword ? "Hide password" : "Show password"
             foreground: root.foreground
             fontFamily: root.fontFamily
-            onClicked: root.showPassword = !root.showPassword
+            onClicked: root.togglePasswordVisibility()
           }
 
           PanelActionButton {
@@ -842,16 +928,16 @@ Panel {
         }
 
         PanelSeparator {
-          visible: root.isOn
+          visible: root.visualOn
           foreground: root.foreground
         }
 
         RowLayout {
-          visible: root.isOn && !root.editingSsid && !root.editingPassword
+          visible: root.visualOn && !root.editingSsid && !root.editingPassword
           width: parent.width
 
           Text {
-            text: "Connected devices"
+            text: "Devices"
             color: root.foreground
             opacity: 0.65
             font.family: root.fontFamily
@@ -860,17 +946,10 @@ Panel {
 
           Item { Layout.fillWidth: true }
 
-          Text {
-            text: String(Number(root.hotspotClients || 0))
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            font.bold: true
-          }
         }
 
         Column {
-          visible: root.isOn && root.hotspotDevices.length > 0 && !root.editingSsid && !root.editingPassword
+          visible: root.visualOn && root.hotspotDevices.length > 0 && !root.editingSsid && !root.editingPassword
           width: parent.width
           spacing: Style.space(6)
 
@@ -881,14 +960,6 @@ Panel {
               required property var modelData
               width: parent.width
               spacing: Style.space(8)
-
-              Text {
-                text: "•"
-                color: root.foreground
-                opacity: 0.65
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.bodySmall
-              }
 
               Text {
                 text: modelData.mac
@@ -906,7 +977,7 @@ Panel {
               }
 
               Text {
-                text: modelData.connected ? modelData.connected + "s" : ""
+                text: root.formatConnectedTime(modelData.connected)
                 color: Qt.darker(root.foreground, 1.4)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption

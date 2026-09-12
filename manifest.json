@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "io.github.chillboy0101.omarchy-hotspot",
-  "name": "Hotspot",
+  "name": "Omarchy Hotspot",
   "version": "1.0.0",
   "author": "Wis-kal",
   "description": "Mobile hotspot toggle: serves a Wi-Fi AP (OmarchyHotspot) while the current connection stays up",
