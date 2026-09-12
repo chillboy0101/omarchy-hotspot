@@ -113,3 +113,31 @@ remove_device_alias() {
   chmod 600 "$tmp"
   mv -f "$tmp" "$aliases_file"
 }
+
+block_device() {
+  local mac="${1,,}" label="$2" blocked_file="$3" tmp
+  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
+  label="$(printf '%s' "${label:-Unknown device}" | LC_ALL=C tr -d '\000-\037\177')"
+  mkdir -p "$(dirname "$blocked_file")"
+  touch "$blocked_file"
+  chmod 600 "$blocked_file"
+  exec 7>"$blocked_file.lock"
+  flock 7
+  tmp="$(mktemp "${blocked_file}.XXXXXX")"
+  awk -F '\t' -v wanted="$mac" 'tolower($1) != wanted' "$blocked_file" >"$tmp"
+  printf '%s\t%s\n' "$mac" "$label" >>"$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$blocked_file"
+}
+
+unblock_device() {
+  local mac="${1,,}" blocked_file="$2" tmp
+  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
+  [ -e "$blocked_file" ] || return 0
+  exec 7>"$blocked_file.lock"
+  flock 7
+  tmp="$(mktemp "${blocked_file}.XXXXXX")"
+  awk -F '\t' -v wanted="$mac" 'tolower($1) != wanted' "$blocked_file" >"$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$blocked_file"
+}

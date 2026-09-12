@@ -25,6 +25,7 @@ OUI_FILE="/usr/share/hwdata/oui.txt"
 METADATA_FILE="$RUN_DIR/device-metadata.tsv"
 DISCOVERY_FILE="$RUN_DIR/device-discovery.tsv"
 ALIASES_FILE="$STATE_DIR/device-aliases.tsv"
+BLOCKED_FILE="$STATE_DIR/blocked-devices.tsv"
 
 if [ -r /usr/local/lib/omarchy-hotspot-device-identification.sh ]; then
   # Installed alongside this helper by install.sh.
@@ -141,6 +142,10 @@ protect_passfile() {
     chown "$(real_user)" "$ALIASES_FILE" 2>/dev/null || true
     chmod 600 "$ALIASES_FILE"
   fi
+  if [ -f "$BLOCKED_FILE" ]; then
+    chown "$(real_user)" "$BLOCKED_FILE" 2>/dev/null || true
+    chmod 600 "$BLOCKED_FILE"
+  fi
 }
 
 ensure_state() {
@@ -153,6 +158,7 @@ ensure_state() {
   if [ ! -s "$SSID_FILE" ]; then
     echo "OmarchyHotspot" >"$SSID_FILE" || true
   fi
+  touch "$BLOCKED_FILE"
   protect_passfile
 }
 
@@ -236,6 +242,7 @@ write_hostapd_conf() {
   cat >"$AP_CONF" <<EOF
 interface=$VIF
 driver=nl80211
+ctrl_interface=/run/hostapd
 ssid=$(ap_ssid)
 hw_mode=$mode
 channel=$channel
@@ -249,6 +256,7 @@ ${seg0:+vht_oper_chwidth=$chwidth}
 ${seg0:+vht_oper_centr_freq_seg0_idx=$seg0}
 ${seg1:+vht_oper_centr_freq_seg1_idx=$seg1}
 ignore_broadcast_ssid=0
+deny_mac_file=$BLOCKED_FILE
 EOF
   chmod 600 "$AP_CONF"
 }
@@ -386,6 +394,47 @@ set_alias_from_stdin() {
   echo "ok"
 }
 
+current_device_label() {
+  local mac="${1,,}" leases="$LEASE_FILE" ip resolved
+  [ -r "$leases" ] || leases="/var/lib/misc/dnsmasq.leases"
+  ip="$(lease_ip "$mac" "$leases")"
+  resolved="$(resolve_device "$mac" "$ip" "$METADATA_FILE" "$DISCOVERY_FILE" "$ALIASES_FILE" "$OUI_FILE")"
+  printf '%s\n' "${resolved%%$'\t'*}"
+}
+
+disconnect_device() {
+  local mac="${1,,}"
+  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
+  hotspot_on || { echo "Hotspot is off" >&2; return 1; }
+  hostapd_cli -p /run/hostapd -i "$VIF" deauthenticate "$mac" | grep -qx OK
+}
+
+block_connected_device() {
+  local mac="${1,,}" label
+  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
+  label="$(current_device_label "$mac")"
+  block_device "$mac" "$label" "$BLOCKED_FILE"
+  protect_passfile
+  if hotspot_on; then
+    hostapd_cli -p /run/hostapd -i "$VIF" deny_acl ADD_MAC "$mac" | grep -qx OK
+    hostapd_cli -p /run/hostapd -i "$VIF" deauthenticate "$mac" | grep -qx OK
+  fi
+}
+
+unblock_connected_device() {
+  local mac="${1,,}"
+  unblock_device "$mac" "$BLOCKED_FILE"
+  protect_passfile
+  if hotspot_on; then
+    hostapd_cli -p /run/hostapd -i "$VIF" deny_acl DEL_MAC "$mac" | grep -qx OK
+  fi
+}
+
+blocked_text() {
+  [ -r "$BLOCKED_FILE" ] && cat "$BLOCKED_FILE"
+  return 0
+}
+
 set_password() {
   local newpass byte_len
   # Read the passphrase from stdin (never argv) so it is not exposed via the
@@ -499,6 +548,7 @@ helper_dispatch() {
   case "$1" in
     status) status_text ;;
     clients) clients_text ;;
+    blocked) blocked_text ;;
     toggle)
       if hotspot_on; then
         stop_ap
@@ -509,6 +559,9 @@ helper_dispatch() {
     set-password) set_password ;;
     set-ssid) set_ssid ;;
     set-device-alias) set_alias_from_stdin ;;
+    disconnect-device) disconnect_device "${2:-}" ;;
+    block-device) block_connected_device "${2:-}" ;;
+    unblock-device) unblock_connected_device "${2:-}" ;;
     *)
       if [ -n "${PKEXEC_UID:-}" ]; then
         echo "Subcommand '$1' is not permitted via pkexec" >&2
@@ -530,7 +583,7 @@ helper_dispatch() {
           pgrep -a hostapd 2>&1
           ;;
         *)
-          echo "usage: omarchy-hotspot-helper {status|clients|toggle|set-password|set-ssid|set-device-alias|debug|test}" >&2
+          echo "usage: omarchy-hotspot-helper {status|clients|blocked|toggle|set-password|set-ssid|set-device-alias|disconnect-device|block-device|unblock-device|debug|test}" >&2
           exit 2
           ;;
       esac
@@ -538,4 +591,7 @@ helper_dispatch() {
   esac
 }
 
-helper_dispatch "${1:-status}"
+if (( $# == 0 )); then
+  set -- status
+fi
+helper_dispatch "$@"

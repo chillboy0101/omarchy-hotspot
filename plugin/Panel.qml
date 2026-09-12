@@ -31,6 +31,9 @@ Panel {
   property string hotspotChannel: ""
   property string hotspotClients: ""
   property var hotspotDevices: []
+  property var blockedDevices: []
+  property string deviceActionBusyMac: ""
+  property string deviceActionError: ""
   property string lastError: ""
   property bool showPassword: false
   property bool qrOverlayOpen: false
@@ -130,6 +133,18 @@ Panel {
       clientsProc.command = ["pkexec", root.helper, "clients"]
       clientsProc.running = true
     }
+    if (!blockedProc.running) {
+      blockedProc.command = ["pkexec", root.helper, "blocked"]
+      blockedProc.running = true
+    }
+  }
+
+  function runDeviceAction(action, mac) {
+    if (deviceActionProc.running || !mac) return
+    deviceActionBusyMac = mac
+    deviceActionError = ""
+    deviceActionProc.command = ["pkexec", root.helper, action, mac]
+    deviceActionProc.running = true
   }
 
   function toggleHotspot() {
@@ -164,6 +179,10 @@ Panel {
       if (!clientsProc.running) {
         clientsProc.command = ["pkexec", root.helper, "clients"]
         clientsProc.running = true
+      }
+      if (!blockedProc.running) {
+        blockedProc.command = ["pkexec", root.helper, "blocked"]
+        blockedProc.running = true
       }
       if (qrSize === 0 && !qrProc.running) Qt.callLater(generateQr)
       // Pull the passphrase straight from the user-owned secret file rather
@@ -419,6 +438,33 @@ Panel {
       }
     }
     onExited: function(code) { if (code !== 0) root.hotspotDevices = [] }
+  }
+
+  Process {
+    id: blockedProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var rows = String(text || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
+        root.blockedDevices = rows.map(function(line) {
+          var p = line.split("\t")
+          return { mac: p[0] || "", name: p[1] || "Unknown device" }
+        }).filter(function(device) { return device.mac !== "" })
+      }
+    }
+  }
+
+  Process {
+    id: deviceActionProc
+    stdout: StdioCollector { id: deviceActionOut; waitForEnd: true }
+    stderr: StdioCollector { id: deviceActionErr; waitForEnd: true }
+    onExited: function(code) {
+      if (code !== 0) {
+        root.deviceActionError = String(deviceActionErr.text || deviceActionOut.text || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
+      }
+      root.deviceActionBusyMac = ""
+      root.refresh()
+    }
   }
 
   Process {
@@ -1068,6 +1114,26 @@ Panel {
               }
 
               PanelActionButton {
+                visible: !parent.editingAlias
+                iconText: "󰖪"
+                tooltipText: "Disconnect"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: root.deviceActionBusyMac === ""
+                onClicked: root.runDeviceAction("disconnect-device", modelData.mac)
+              }
+
+              PanelActionButton {
+                visible: !parent.editingAlias
+                iconText: "󰅛"
+                tooltipText: "Block"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: root.deviceActionBusyMac === ""
+                onClicked: root.runDeviceAction("block-device", modelData.mac)
+              }
+
+              PanelActionButton {
                 visible: parent.editingAlias
                 iconText: "󰄬"
                 tooltipText: "Save device name"
@@ -1085,6 +1151,70 @@ Panel {
                 fontFamily: root.fontFamily
                 enabled: !root.deviceAliasBusy
                 onClicked: root.cancelDeviceAlias()
+              }
+            }
+          }
+
+          Text {
+            visible: root.deviceActionError !== ""
+            text: root.deviceActionError
+            textFormat: Text.PlainText
+            color: root.urgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            width: parent.width
+            wrapMode: Text.Wrap
+          }
+
+          PanelSeparator {
+            visible: root.blockedDevices.length > 0
+            foreground: root.foreground
+          }
+
+          PanelSectionHeader {
+            visible: root.blockedDevices.length > 0
+            text: "BLOCKED DEVICES"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+
+          Repeater {
+            model: root.blockedDevices
+
+            RowLayout {
+              required property var modelData
+              width: parent.width
+              spacing: Style.space(8)
+
+              Column {
+                Layout.fillWidth: true
+
+                Text {
+                  text: modelData.name
+                  textFormat: Text.PlainText
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  width: parent.width
+                  wrapMode: Text.Wrap
+                }
+
+                Text {
+                  text: modelData.mac
+                  textFormat: Text.PlainText
+                  color: Qt.darker(root.foreground, 1.4)
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+              }
+
+              PanelActionButton {
+                iconText: "󰅚"
+                tooltipText: "Unblock"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: root.deviceActionBusyMac === ""
+                onClicked: root.runDeviceAction("unblock-device", modelData.mac)
               }
             }
           }

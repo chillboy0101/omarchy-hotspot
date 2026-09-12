@@ -21,6 +21,7 @@ Maintained by **[Wis-kal](https://github.com/chillboy0101)**.
 - 🌐 **Shares any uplink** — NAT follows the default route: Ethernet, phone tether, or a VLAN-tagged interface. Whatever carries your internet is shared.
 - 🔒 **WPA2** with a persistent random password — edit the hotspot name and optionally set a new password together in one labeled form; the password stays hidden unless revealed, and leaving it blank keeps the current password.
 - 📱 **Device identification** — caches DHCP, mDNS, NetBIOS, and hardware-vendor identity without slowing panel refreshes; an inline native editor remembers exact UTF-8 names and emoji when phone privacy hides them.
+- 🚫 **Device control** — disconnect a client once, block it persistently, or unblock it from a dedicated native panel section.
 - ⚡ **Passwordless controls** — a scoped polkit rule keeps status, toggling, and deliberate credential saves fast and prompt-free.
 
 ## How it works
@@ -100,6 +101,8 @@ sudo pacman -Rns hostapd dnsmasq               # optional: if nothing else uses 
 ## Usage
 
 Connected devices show their best locally available name with MAC/IP, signal, and connection time. Use the pencil beside a device to save an exact name such as `Carl 📱`; clearing the field removes the saved alias. Phones may omit their Settings name or use a private MAC, so automatic model detection is not guaranteed.
+
+**Disconnect** removes a device immediately, but it may reconnect because it still knows the password. **Block** disconnects it and prevents reconnection across hotspot restarts. Blocked clients appear under **BLOCKED DEVICES**, where **Unblock** permits them again.
 
 - Click the hotspot icon in the bar → panel opens.
 - Flip the switch (or press `Enter`). Status shows uplink, channel, clients.

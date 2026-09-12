@@ -28,6 +28,7 @@ transparency record for reviewers and as an operational reference.
 | 7 | `install.sh` interpolated the username into a `sed` replacement (regex/`&` interpretation risk). | The polkit rule is generated with `awk -v`, treating the username as a fixed string. |
 | 8 | WIFI QR payload escaping omitted the double quote. | `qr.sh` now also escapes `"` per the WIFI QR standard. |
 | 9 | Device names originate from untrusted DHCP and local discovery data. | Lease metadata and aliases are control-character sanitized, passed as tab-separated plain text, and rendered with `Text.PlainText`. Discovery uses only bounded local mDNS, NetBIOS, and the installed OUI database; it performs no external lookup or fingerprint scan. |
+| 10 | Device-control commands could pass arbitrary values to `hostapd_cli`. | Disconnect, block, and unblock accept only a strictly validated six-octet MAC address. The helper selects the fixed interface and fixed hostapd command; the panel cannot supply arbitrary control commands. |
 
 ## Runtime file permissions
 
@@ -35,6 +36,8 @@ transparency record for reviewers and as an operational reference.
   Contains the WPA passphrase.
 - `/var/lib/omarchy-hotspot/device-aliases.tsv` — `600`, owned by the installing user.
   Contains optional user-assigned device names.
+- `/var/lib/omarchy-hotspot/blocked-devices.tsv` — `600`, owned by the installing user.
+  Contains the persistent MAC deny list and its display labels.
 - `/run/omarchy-hotspot/` — `700` (root). `hostapd.conf` inside is `600` and
   contains the same passphrase; it is only read by root-owned `hostapd`.
 - `/usr/local/bin/omarchy-hotspot-helper` — `755`, root-owned and not writable
