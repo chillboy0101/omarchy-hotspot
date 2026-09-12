@@ -64,9 +64,11 @@ bash -n src/omarchy-hotspot-helper
 
 ## Testing
 
-Currently there is no automated test suite. For now:
+Run the automated checks before submitting changes:
 
-- **Manually test** your changes on a real system
+- `bash tests/device-identification-test.sh`
+- `bash tests/panel-behavior-test.sh`
+- **Manually test** UI and networking changes on a real system
 - **Verify** `shellcheck` and `bash -n` pass
 - **Document** the testing steps in your PR description
 - For helper changes, verify with `dnsmasq --test` when touching dnsmasq arguments
@@ -85,6 +87,7 @@ Thanks to everyone who has helped improve this project:
 
 | Contributor | Role |
 |---|---|
-| **[Shivam Narkar](https://github.com/shivamnarkar47)** — `@shivamnarkar47` | Creator & maintainer |
+| **[Wis-kal](https://github.com/chillboy0101)** — `@chillboy0101` | Owner and current maintainer |
+| **[Shivam Narkar](https://github.com/shivamnarkar47)** — `@shivamnarkar47` | Original implementation |
 | **[Muhammad Dicky Isra](https://github.com/DaDecky)** — `@DaDecky` | Contributor (scoped IPv6 resolver fix) |
 | **[JunaidIRF](https://github.com/JunaidIRF)** — `@JunaidIRF` | Contributor (inline SSID editor & popup overflow fix) |

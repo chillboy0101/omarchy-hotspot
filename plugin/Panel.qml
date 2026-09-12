@@ -250,7 +250,11 @@ Panel {
     ssidError = ""
     passwordError = ""
     editingHotspot = true
-    Qt.callLater(function() { if (hotspotNameField) hotspotNameField.forceActiveFocus() })
+    Qt.callLater(function() {
+      if (!hotspotNameField) return
+      hotspotNameField.selectAll()
+      hotspotNameField.forceActiveFocus()
+    })
   }
 
   function cancelHotspotEdit() {
