@@ -253,6 +253,12 @@ Panel {
     Qt.callLater(function() { if (hotspotNameField) hotspotNameField.forceActiveFocus() })
   }
 
+  function toggleHotspotEdit() {
+    if (ssidBusy || passwordBusy || isBusy) return
+    if (editingHotspot) cancelHotspotEdit()
+    else startHotspotEdit()
+  }
+
   function cancelHotspotEdit() {
     editingHotspot = false
     ssidDraft = ""
@@ -343,7 +349,7 @@ Panel {
     if (focusSection === "hero") toggleHotspot()
     else if (actionIndex === 0) copyPassword()
     else if (actionIndex === 1) generateQr()
-    else if (actionIndex === 2) startHotspotEdit()
+    else if (actionIndex === 2) toggleHotspotEdit()
   }
 
   function setSection(section, index) {
@@ -699,12 +705,12 @@ Panel {
             PanelActionButton {
             visible: root.visualOn
             iconText: "󰏫"
-            tooltipText: "Edit hotspot"
+            tooltipText: root.editingHotspot ? "Close editor" : "Edit hotspot"
             foreground: root.foreground
             fontFamily: root.fontFamily
             hasCursor: root.editHasCursor
             onHovered: function(on) { if (on) root.setSection("actions", 2) }
-            onClicked: root.startHotspotEdit()
+            onClicked: root.toggleHotspotEdit()
           }
 
           ToggleSwitch {
