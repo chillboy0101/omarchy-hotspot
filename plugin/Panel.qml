@@ -36,19 +36,20 @@ Panel {
   property bool qrOverlayOpen: false
   property bool pendingOn: false
 
-  // SSID editing state.
-  property bool editingSsid: false
+  // Combined hotspot name and optional password editor.
+  property bool editingHotspot: false
   property string ssidDraft: ""
   property bool ssidBusy: false
   property string ssidError: ""
   property string pendingSsid: ""
 
-  // Password editing state.
-  property bool editingPassword: false
+  // A blank edit-password field means keep the saved password unchanged.
   property string passwordDraft: ""
   property bool passwordBusy: false
   property string passwordError: ""
   property string pendingPassword: ""
+  property bool savePasswordAfterSsid: false
+  property bool showEditPassword: false
 
   property var qrRows: []
   property int qrSize: 0
@@ -88,11 +89,11 @@ Panel {
   ]
   readonly property string activityPhrase: activityPhrases[activityPhraseIndex % activityPhrases.length]
 
-  // Cursor: "hero" (toggle switch) | "actions" (copy password, refresh QR)
+  // Cursor: "hero" (toggle switch) | "actions" (copy password, QR, edit hotspot)
   property bool cursorActive: false
   property string focusSection: "hero"
   property int actionIndex: 0
-  readonly property int actionCount: 3  // copy password, refresh QR, edit password
+  readonly property int actionCount: 3  // copy password, refresh QR, edit hotspot
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -103,6 +104,9 @@ Panel {
 
   function openQrOverlay() {
     if (!isOn) return
+    // Match Omarchy's native Wi-Fi flow: dismiss the dropdown before showing
+    // the full-screen QR surface, so the plugin panel is not left underneath.
+    root.close()
     qrOverlayOpen = true
     if (!showingQr) generateQr()
   }
@@ -147,7 +151,7 @@ Panel {
     var parts = String(raw || "").trim().split(/\s+/)
     if (parts[0] === "on") {
       hotspotState = "on"
-      if (parts[1] && !root.editingSsid) hotspotSsid = parts[1]
+      if (parts[1] && !root.editingHotspot) hotspotSsid = parts[1]
       hotspotUplink = parts[2] || ""
       hotspotChannel = parts[3] || ""
       hotspotClients = parts[4] || ""
@@ -168,7 +172,7 @@ Panel {
       return
     } else {
       hotspotState = "off"
-      if (parts[1] && !root.editingSsid) hotspotSsid = parts[1]
+      if (parts[1] && !root.editingHotspot) hotspotSsid = parts[1]
       hotspotUplink = ""
       hotspotChannel = ""
       hotspotClients = ""
@@ -206,7 +210,7 @@ Panel {
   function togglePasswordVisibility() {
     if (showPassword) {
       hidePassword()
-    } else if (opened && visualOn && hotspotPassword && !editingPassword) {
+    } else if (opened && visualOn && hotspotPassword && !editingHotspot) {
       showPassword = true
       passwordHideTimer.restart()
     }
@@ -237,65 +241,87 @@ Panel {
     copyFlashTimer.restart()
   }
 
-  function startPasswordEdit() {
-    if (passwordBusy || isBusy) return
+  function startHotspotEdit() {
+    if (ssidBusy || passwordBusy || isBusy) return
     hidePassword()
-    if (editingSsid) cancelSsidEdit()
-    passwordDraft = hotspotPassword || ""
+    showEditPassword = false
+    ssidDraft = hotspotSsid || "OmarchyHotspot"
+    passwordDraft = ""
+    ssidError = ""
     passwordError = ""
-    editingPassword = true
-    Qt.callLater(function() { if (passwordField) passwordField.forceActiveFocus() })
+    editingHotspot = true
+    Qt.callLater(function() { if (hotspotNameField) hotspotNameField.forceActiveFocus() })
   }
 
-  function cancelPasswordEdit() {
-    editingPassword = false
+  function cancelHotspotEdit() {
+    editingHotspot = false
+    ssidDraft = ""
     passwordDraft = ""
+    ssidError = ""
     passwordError = ""
+    savePasswordAfterSsid = false
+    pendingPassword = ""
+    showEditPassword = false
+    editPasswordHideTimer.stop()
     Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
   }
 
-  function savePassword() {
-    if (passwordBusy) return
-    var draft = passwordDraft.trim()
-    if (draft.length < 8) { passwordError = "Minimum 8 characters"; return }
-    if (draft.length > 63) { passwordError = "Maximum 63 characters"; return }
+  function finishHotspotEdit() {
+    editingHotspot = false
+    ssidDraft = ""
+    passwordDraft = ""
+    ssidError = ""
+    passwordError = ""
+    pendingPassword = ""
+    showEditPassword = false
+    editPasswordHideTimer.stop()
+    Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+  }
+
+  function savePendingPassword() {
     passwordBusy = true
     passwordError = ""
-    // Feed the passphrase over stdin (not argv) so it is never exposed in the
-    // process command line. The helper reads it from stdin.
-    pendingPassword = draft
+    pendingPassword = passwordDraft
     passProc.command = ["pkexec", root.helper, "set-password"]
     passProc.running = true
   }
 
-  function startSsidEdit() {
-    if (ssidBusy || isBusy) return
-    if (editingPassword) cancelPasswordEdit()
-    ssidDraft = hotspotSsid || "OmarchyHotspot"
-    ssidError = ""
-    editingSsid = true
-    Qt.callLater(function() {
-      if (typeof qrSsidField !== "undefined" && qrSsidField && qrSsidField.visible) qrSsidField.forceActiveFocus()
-    })
-  }
-
-  function cancelSsidEdit() {
-    editingSsid = false
-    ssidDraft = ""
-    ssidError = ""
-    Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
-  }
-
-  function saveSsid() {
-    if (ssidBusy) return
+  function saveHotspotEdit() {
+    if (ssidBusy || passwordBusy || isBusy) return
     var draft = ssidDraft.trim()
     if (draft.length < 1) { ssidError = "SSID cannot be empty"; return }
     if (draft.length > 32) { ssidError = "Maximum 32 characters"; return }
-    ssidBusy = true
+    var newPassword = passwordDraft
+    if (newPassword.length > 0 && newPassword.length < 8) {
+      passwordError = "Minimum 8 characters"
+      return
+    }
+    if (newPassword.length > 63) {
+      passwordError = "Maximum 63 characters"
+      return
+    }
+
     ssidError = ""
-    pendingSsid = draft
-    ssidProc.command = ["pkexec", root.helper, "set-ssid"]
-    ssidProc.running = true
+    passwordError = ""
+    var nameChanged = draft !== hotspotSsid
+    savePasswordAfterSsid = nameChanged && newPassword.length > 0
+    if (nameChanged) {
+      ssidBusy = true
+      pendingSsid = draft
+      pendingPassword = newPassword
+      ssidProc.command = ["pkexec", root.helper, "set-ssid"]
+      ssidProc.running = true
+    } else if (newPassword.length > 0) {
+      savePendingPassword()
+    } else {
+      finishHotspotEdit()
+    }
+  }
+
+  function toggleEditPasswordVisibility() {
+    showEditPassword = !showEditPassword
+    if (showEditPassword) editPasswordHideTimer.restart()
+    else editPasswordHideTimer.stop()
   }
 
   function statusLine() {
@@ -317,7 +343,7 @@ Panel {
     if (focusSection === "hero") toggleHotspot()
     else if (actionIndex === 0) copyPassword()
     else if (actionIndex === 1) generateQr()
-    else if (actionIndex === 2) startPasswordEdit()
+    else if (actionIndex === 2) startHotspotEdit()
   }
 
   function setSection(section, index) {
@@ -398,13 +424,20 @@ Panel {
       ssidBusy = false
       if (code !== 0) {
         ssidError = String(ssidErr.text || ssidOut.text || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
+        savePasswordAfterSsid = false
+        pendingPassword = ""
         return
       }
       root.hotspotSsid = root.pendingSsid
-      editingSsid = false
-      ssidDraft = ""
+      ssidDraft = root.pendingSsid
       root.refresh()
       if (root.isOn) root.generateQr()
+      if (root.savePasswordAfterSsid) {
+        root.savePasswordAfterSsid = false
+        root.savePendingPassword()
+      } else {
+        root.finishHotspotEdit()
+      }
     }
   }
 
@@ -422,12 +455,14 @@ Panel {
       passwordBusy = false
       if (code !== 0) {
         passwordError = String(passErr.text || passOut.text || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
+        pendingPassword = ""
         return
       }
-      editingPassword = false
-      passwordDraft = ""
+      root.hotspotPassword = root.pendingPassword
+      root.pendingPassword = ""
       root.refresh()
       if (root.isOn) root.generateQr()
+      root.finishHotspotEdit()
     }
   }
 
@@ -453,6 +488,13 @@ Panel {
     interval: 7000
     repeat: false
     onTriggered: root.hidePassword()
+  }
+
+  Timer {
+    id: editPasswordHideTimer
+    interval: 7000
+    repeat: false
+    onTriggered: root.showEditPassword = false
   }
 
   Timer {
@@ -502,6 +544,19 @@ Panel {
 
   onOpenedChanged: {
     hidePassword()
+    if (!opened) {
+      showEditPassword = false
+      editPasswordHideTimer.stop()
+      if (!ssidBusy && !passwordBusy) {
+        editingHotspot = false
+        ssidDraft = ""
+        passwordDraft = ""
+        ssidError = ""
+        passwordError = ""
+        pendingPassword = ""
+      }
+      return
+    }
     if (opened) {
       refresh()
       readPassword()
@@ -576,7 +631,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      blocked: root.editingPassword || root.passwordBusy
+      blocked: root.editingHotspot || root.ssidBusy || root.passwordBusy
 
       onMoveRequested: function(dx, dy) {
         if (dy !== 0) root.moveCursor(dy)
@@ -644,10 +699,12 @@ Panel {
             PanelActionButton {
             visible: root.visualOn
             iconText: "󰏫"
-            tooltipText: "Edit network name"
+            tooltipText: "Edit hotspot"
             foreground: root.foreground
             fontFamily: root.fontFamily
-            onClicked: root.startSsidEdit()
+            hasCursor: root.editHasCursor
+            onHovered: function(on) { if (on) root.setSection("actions", 2) }
+            onClicked: root.startHotspotEdit()
           }
 
           ToggleSwitch {
@@ -866,7 +923,7 @@ Panel {
         */
         // Password appears once, with its edit and copy actions.
         RowLayout {
-          visible: !root.editingSsid && !root.editingPassword
+          visible: !root.editingHotspot
           width: parent.width
           spacing: Style.space(8)
 
@@ -875,7 +932,7 @@ Panel {
             color: root.foreground
             opacity: 0.65
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: Style.font.body
           }
 
           Text {
@@ -883,7 +940,7 @@ Panel {
             textFormat: Text.PlainText
             color: root.foreground
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: Style.font.body
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignRight
             elide: Text.ElideRight
@@ -895,16 +952,6 @@ Panel {
             foreground: root.foreground
             fontFamily: root.fontFamily
             onClicked: root.togglePasswordVisibility()
-          }
-
-          PanelActionButton {
-            iconText: "󰏫"
-            tooltipText: "Edit password"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            hasCursor: root.editHasCursor
-            onHovered: function(on) { if (on) root.setSection("actions", 2) }
-            onClicked: root.startPasswordEdit()
           }
 
           PanelActionButton {
@@ -933,7 +980,7 @@ Panel {
         }
 
         RowLayout {
-          visible: root.visualOn && !root.editingSsid && !root.editingPassword
+          visible: root.visualOn && !root.editingHotspot
           width: parent.width
 
           Text {
@@ -941,7 +988,7 @@ Panel {
             color: root.foreground
             opacity: 0.65
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: Style.font.body
           }
 
           Item { Layout.fillWidth: true }
@@ -949,7 +996,7 @@ Panel {
         }
 
         Column {
-          visible: root.visualOn && root.hotspotDevices.length > 0 && !root.editingSsid && !root.editingPassword
+          visible: root.visualOn && root.hotspotDevices.length > 0 && !root.editingHotspot
           width: parent.width
           spacing: Style.space(6)
 
@@ -986,87 +1033,117 @@ Panel {
           }
         }
 
-        // Editing SSID: centered row
-        Row {
-          visible: root.editingSsid
-          anchors.horizontalCenter: parent.horizontalCenter
-          spacing: Style.space(6)
+        // A single edit view keeps the network name and optional new
+        // password together. A blank password means leave the saved one as-is.
+        Column {
+          visible: root.editingHotspot
+          width: parent.width
+          spacing: Style.space(8)
 
-          TextField {
-            id: qrSsidField
-            width: Style.space(140)
-            text: root.ssidDraft
-            placeholderText: "Hotspot Name"
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            foreground: root.foreground
-            horizontalPadding: Style.space(8)
-            verticalPadding: Style.space(3)
-            onTextChanged: if (visible && text !== root.ssidDraft) root.ssidDraft = text
-            onAccepted: root.saveSsid()
-            Keys.onEscapePressed: root.cancelSsidEdit()
-          }
+          RowLayout {
+            width: parent.width
+            spacing: Style.space(8)
 
-          PanelActionButton {
-            iconText: ""
-            tooltipText: "Save name"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            onClicked: root.saveSsid()
-          }
-
-          PanelActionButton {
-            iconText: "󰜺"
-            tooltipText: "Cancel"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            onClicked: root.cancelSsidEdit()
-          }
-        }
-
-        // Editing Password: centered row
-        Row {
-          visible: root.editingPassword
-          anchors.horizontalCenter: parent.horizontalCenter
-          spacing: Style.space(6)
-
-          TextField {
-            id: passwordField
-            width: Style.space(140)
-            text: root.passwordDraft
-            placeholderText: "New password (8+)"
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            foreground: root.foreground
-            horizontalPadding: Style.space(8)
-            verticalPadding: Style.space(3)
-            onTextChanged: if (visible && text !== root.passwordDraft) {
-              root.passwordDraft = text
-              root.passwordError = ""
+            Text {
+              textFormat: Text.PlainText
+              text: "Hotspot name"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              Layout.preferredWidth: Style.space(100)
             }
-            onAccepted: root.savePassword()
-            Keys.onEscapePressed: root.cancelPasswordEdit()
+
+            TextField {
+              id: hotspotNameField
+              text: root.ssidDraft
+              placeholderText: "Wi-Fi network name"
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              foreground: root.foreground
+              horizontalPadding: Style.spacing.controlGap
+              verticalPadding: Style.spacing.controlPaddingY
+              enabled: !root.ssidBusy && !root.passwordBusy
+              Layout.fillWidth: true
+              onTextChanged: if (visible && text !== root.ssidDraft) {
+                root.ssidDraft = text
+                root.ssidError = ""
+              }
+              onAccepted: hotspotPasswordField.forceActiveFocus()
+              Keys.onEscapePressed: root.cancelHotspotEdit()
+            }
           }
 
-          PanelActionButton {
-            iconText: ""
-            tooltipText: "Save password"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            onClicked: root.savePassword()
+          RowLayout {
+            width: parent.width
+            spacing: Style.space(8)
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Password"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              Layout.preferredWidth: Style.space(100)
+            }
+
+            TextField {
+              id: hotspotPasswordField
+              text: root.passwordDraft
+              placeholderText: "Leave blank to keep current"
+              echoMode: root.showEditPassword ? TextInput.Normal : TextInput.Password
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              foreground: root.foreground
+              horizontalPadding: Style.spacing.controlGap
+              verticalPadding: Style.spacing.controlPaddingY
+              enabled: !root.ssidBusy && !root.passwordBusy
+              Layout.fillWidth: true
+              onTextChanged: if (visible && text !== root.passwordDraft) {
+                root.passwordDraft = text
+                root.passwordError = ""
+              }
+              onAccepted: root.saveHotspotEdit()
+              Keys.onEscapePressed: root.cancelHotspotEdit()
+            }
+
+            PanelActionButton {
+              iconText: root.showEditPassword ? "󰈈" : "󰈉"
+              tooltipText: root.showEditPassword ? "Hide new password" : "Show new password"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              enabled: !root.passwordBusy
+              onClicked: root.toggleEditPasswordVisibility()
+            }
           }
 
-          PanelActionButton {
-            iconText: "󰜺"
-            tooltipText: "Cancel"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            onClicked: root.cancelPasswordEdit()
+          RowLayout {
+            width: parent.width
+            spacing: Style.space(8)
+
+            Item { Layout.fillWidth: true }
+
+            PanelActionButton {
+              iconText: ""
+              tooltipText: "Save changes"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              enabled: !root.ssidBusy && !root.passwordBusy
+              onClicked: root.saveHotspotEdit()
+            }
+
+            PanelActionButton {
+              iconText: "󰜺"
+              tooltipText: "Cancel"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              enabled: !root.ssidBusy && !root.passwordBusy
+              onClicked: root.cancelHotspotEdit()
+            }
           }
         }
 
         Text {
-          visible: root.ssidError !== ""
+          visible: root.editingHotspot && root.ssidError !== ""
           text: root.ssidError
           textFormat: Text.PlainText
           color: root.urgent
@@ -1076,7 +1153,7 @@ Panel {
         }
 
         Text {
-          visible: root.editingPassword && root.passwordError !== ""
+          visible: root.editingHotspot && root.passwordError !== ""
           text: root.passwordError
           textFormat: Text.PlainText
           color: root.urgent
