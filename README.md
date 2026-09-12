@@ -18,7 +18,7 @@ current connection — while the station link stays up the entire time.
 - 🎛️ **Interactive panel** — hero toggle, live status (uplink, channel, connected clients), copy-password, keyboard navigation (`j/k`, `Enter`, `Esc`).
 - 🌐 **Shares any uplink** — NAT follows the default route: Ethernet, phone tether, or a VLAN-tagged interface. Whatever carries your internet is shared.
 - 🔒 **WPA2** with a persistent random password — edit the hotspot name and optionally set a new password together in one labeled form; the password stays hidden unless revealed, and leaving it blank keeps the current password.
-- ⚡ **Passwordless toggling** — a scoped polkit rule lets the bar widget drive the root helper without prompts.
+- ⚡ **Passwordless toggling** — routine status, device refresh, and on/off actions remain instant; saving a new hotspot name or password requests administrator authentication.
 
 ## How it works
 
@@ -77,7 +77,7 @@ cd omarchy-hotspot
 
 1. Installs `hostapd` + `dnsmasq` (pacman)
 2. Installs `src/omarchy-hotspot-helper` → `/usr/local/bin/`
-3. Installs the polkit rule (passwordless `pkexec` for the helper only)
+3. Installs the scoped polkit rule (passwordless routine actions; authenticated credential changes)
 4. Tells NetworkManager to never touch `ap0` (it would force station mode)
 
 ## Removal

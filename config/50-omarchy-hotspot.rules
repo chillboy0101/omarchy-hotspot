@@ -2,6 +2,19 @@ polkit.addRule(function(action, subject) {
   if (action.id == "org.freedesktop.policykit.exec" &&
       subject.user == "__USER__" &&
       action.lookup("program") == "/usr/local/bin/omarchy-hotspot-helper") {
-    return polkit.Result.YES;
+    var command = action.lookup("command_line");
+
+    // Routine panel operations stay instant and passwordless.
+    if (command == "/usr/local/bin/omarchy-hotspot-helper status" ||
+        command == "/usr/local/bin/omarchy-hotspot-helper clients" ||
+        command == "/usr/local/bin/omarchy-hotspot-helper toggle") {
+      return polkit.Result.YES;
+    }
+
+    // Changing saved hotspot credentials requires deliberate authentication.
+    if (command == "/usr/local/bin/omarchy-hotspot-helper set-ssid" ||
+        command == "/usr/local/bin/omarchy-hotspot-helper set-password") {
+      return polkit.Result.AUTH_ADMIN;
+    }
   }
 });
