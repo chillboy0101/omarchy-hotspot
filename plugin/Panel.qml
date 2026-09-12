@@ -984,8 +984,6 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
               foreground: root.foreground
-              horizontalPadding: Style.spacing.controlGap
-              verticalPadding: Style.spacing.controlPaddingY
               enabled: !root.ssidBusy && !root.passwordBusy
               width: parent.width
               onTextChanged: if (visible && text !== root.ssidDraft) {
@@ -1007,22 +1005,21 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            RowLayout {
+            Item {
               width: parent.width
-              spacing: Style.space(8)
+              implicitHeight: hotspotPasswordField.implicitHeight
 
               TextField {
                 id: hotspotPasswordField
+                anchors.fill: parent
                 text: root.passwordDraft
                 placeholderText: "Leave blank to keep current"
                 echoMode: root.showEditPassword ? TextInput.Normal : TextInput.Password
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
                 foreground: root.foreground
-                horizontalPadding: Style.spacing.controlGap
-                verticalPadding: Style.spacing.controlPaddingY
+                rightPadding: Style.spacing.controlPaddingX + editPasswordEye.width + Style.spacing.sm
                 enabled: !root.ssidBusy && !root.passwordBusy
-                Layout.fillWidth: true
                 onTextChanged: if (visible && text !== root.passwordDraft) {
                   root.passwordDraft = text
                   root.passwordError = ""
@@ -1032,11 +1029,16 @@ Panel {
               }
 
               PanelActionButton {
+                id: editPasswordEye
+                anchors.right: parent.right
+                anchors.rightMargin: Style.spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
                 iconText: root.showEditPassword ? "󰈈" : "󰈉"
                 tooltipText: root.showEditPassword ? "Hide new password" : "Show new password"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
                 enabled: !root.passwordBusy
+                z: 1
                 onClicked: root.toggleEditPasswordVisibility()
               }
             }
@@ -1049,19 +1051,23 @@ Panel {
             Item { Layout.fillWidth: true }
 
             PanelActionButton {
-              iconText: ""
+              iconText: "󰄬"
               tooltipText: "Save changes"
               foreground: root.foreground
               fontFamily: root.fontFamily
+              focusable: true
+              bordered: true
               enabled: !root.ssidBusy && !root.passwordBusy
               onClicked: root.saveHotspotEdit()
             }
 
             PanelActionButton {
-              iconText: "󰜺"
+              iconText: "󰅙"
               tooltipText: "Cancel"
               foreground: root.foreground
               fontFamily: root.fontFamily
+              focusable: true
+              bordered: true
               enabled: !root.ssidBusy && !root.passwordBusy
               onClicked: root.cancelHotspotEdit()
             }
