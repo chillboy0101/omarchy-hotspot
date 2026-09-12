@@ -1088,6 +1088,7 @@ Panel {
               required property int index
               readonly property bool editingAlias: root.editingDeviceMac === modelData.mac
               readonly property bool rowSelected: root.cursorActive && root.focusSection === "devices" && root.deviceIndex === index
+              readonly property bool canRename: modelData.source === "unknown" || modelData.source === "vendor"
               readonly property bool showRowActions: !editingAlias && (deviceRowHover.hovered || rowSelected)
               property bool nameActionHovered: false
               property bool blockActionHovered: false
@@ -1213,7 +1214,7 @@ Panel {
                 }
 
                 PanelActionButton {
-                  visible: deviceRow.showRowActions
+                  visible: deviceRow.showRowActions && deviceRow.canRename
                   iconText: "󰏫"
                   tooltipText: "Name device"
                   foreground: root.foreground

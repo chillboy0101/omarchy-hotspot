@@ -36,6 +36,8 @@ if grep -q 'current: true' "$panel"; then
   exit 1
 fi
 grep -q 'readonly property bool showRowActions:' "$panel"
+grep -q 'readonly property bool canRename:' "$panel"
+grep -q 'visible: deviceRow.showRowActions && deviceRow.canRename' "$panel"
 grep -q 'id: deviceRowHover' "$panel"
 grep -q 'id: blockedRowHover' "$panel"
 grep -q 'function clearDeviceRowSelection' "$panel"
