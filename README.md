@@ -20,9 +20,10 @@ Maintained by **[Wis-kal](https://github.com/chillboy0101)**.
 - 🎛️ **Interactive panel** — hero toggle, live status (uplink, channel, connected clients), copy-password, keyboard navigation (`j/k`, `Enter`, `Esc`).
 - 🌐 **Shares any uplink** — NAT follows the default route: Ethernet, phone tether, or a VLAN-tagged interface. Whatever carries your internet is shared.
 - 🔒 **WPA2** with a persistent random password — edit the hotspot name and optionally set a new password together in one labeled form; the password stays hidden unless revealed, and leaving it blank keeps the current password.
-- 📱 **Device identification** — caches DHCP, mDNS, NetBIOS, and hardware-vendor identity without slowing panel refreshes; an inline native editor remembers exact UTF-8 names and emoji when phone privacy hides them.
+- 📱 **Device identification** — caches DHCP, mDNS, NetBIOS, and hardware-vendor identity without slowing panel refreshes; Rename appears only as a fallback for unknown or generic device labels.
 - 🚫 **Device control** — disconnect a client once, block it persistently, or unblock it from a dedicated native panel section.
 - ⚡ **Passwordless controls** — a scoped polkit rule keeps status, toggling, and deliberate credential saves fast and prompt-free.
+- 🛡️ **Hardened boundary** — root-owned atomic state, fixed command allowlists, stdin-only secret handling, and bounded process groups protect the privileged path.
 
 ## How it works
 
@@ -49,7 +50,7 @@ The AP runs on a **virtual interface** (`ap0`) alongside your station interface:
 
 ## Requirements
 
-- Omarchy (or any Hyprland + Quickshell setup), `iw`, `nmcli`, `qrencode`
+- Omarchy (or any Hyprland + Quickshell setup), `iw`, `nmcli`, `qrencode`, `python3`, and `wl-copy`
 - Packages: `hostapd`, `dnsmasq` (installed by `install.sh` via pacman)
 - A Wi-Fi card whose driver supports **concurrent station + AP** on separate
   virtual interfaces. Verify with:
@@ -81,14 +82,17 @@ cd omarchy-hotspot
 
 1. Installs `hostapd` + `dnsmasq` (pacman)
 2. Installs `src/omarchy-hotspot-helper` → `/usr/local/bin/`
-3. Installs the polkit rule (passwordless `pkexec` for the helper only)
-4. Tells NetworkManager to never touch `ap0` (it would force station mode)
+3. Installs the root-owned no-follow atomic state helper and device discovery hooks
+4. Migrates existing hotspot settings to root-owned `600` files without changing their values
+5. Installs the polkit rule (passwordless `pkexec` for the helper only)
+6. Tells NetworkManager to never touch `ap0` (it would force station mode)
 
 ## Removal
 
 ```sh
 omarchy plugin remove io.github.chillboy0101.omarchy-hotspot --yes      # bar widget
 sudo rm /usr/local/bin/omarchy-hotspot-helper  # system helper
+sudo rm /usr/local/lib/omarchy-hotspot-secure-state
 sudo rm /usr/local/lib/omarchy-hotspot-device-identification.sh
 sudo rm /usr/local/lib/omarchy-hotspot-discover-device.sh
 sudo rm /usr/local/lib/omarchy-hotspot-lease-event.sh
@@ -100,7 +104,7 @@ sudo pacman -Rns hostapd dnsmasq               # optional: if nothing else uses 
 
 ## Usage
 
-Connected devices show their best locally available name with MAC/IP, signal, and connection time. Use the pencil beside a device to save an exact name such as `Carl 📱`; clearing the field removes the saved alias. Phones may omit their Settings name or use a private MAC, so automatic model detection is not guaranteed.
+Connected devices show their best locally available name with MAC/IP, signal, and connection time. The pencil appears only when discovery returns **Unknown device** or a generic manufacturer label; it saves a local fallback name such as `Carl 📱`. Phones may omit their Settings name or use a private MAC, so automatic model detection cannot be guaranteed.
 
 **Disconnect** removes a device immediately, but it may reconnect because it still knows the password. **Block** disconnects it and prevents reconnection across hotspot restarts. Blocked clients appear under **BLOCKED DEVICES**, where **Unblock** permits them again.
 
@@ -127,13 +131,11 @@ The plugin is a plain Quickshell bar widget:
 
 ```
 plugin/
-├── manifest.json   # id, kinds, bar-widget metadata
-├── Panel.qml       # bar button + popup UI (hero, QR, details)
-└── qr.sh           # QR matrix generator (WIFI: scheme)
+├── Panel.qml        # bar button + popup UI (hero, QR, details)
+├── run-bounded.py   # process-group timeout and output limits
+├── copy-secret.py   # bounded stdin-to-clipboard bridge
+└── qr.sh            # bounded stdin-to-QR matrix generator
 ```
-
-Ideas: client list with MACs, per-client bandwidth, SSID/password settings
-in `shell.json`, 5GHz band preference, WPA3, scheduled on/off.
 
 ## Credits
 

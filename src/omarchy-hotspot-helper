@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 # omarchy-hotspot-helper: concurrent Wi-Fi hotspot for the local.hotspot bar
 # plugin. The station interface stays connected to the current network while
 # a virtual AP interface (ap0) serves clients via hostapd + dnsmasq. Traffic
@@ -10,14 +10,67 @@
 #
 # Started via pkexec by the panel; a polkit rule makes that passwordless.
 set -euo pipefail
+umask 077
+
+# The helper crosses a passwordless privilege boundary. Do not resolve any
+# executable from caller-controlled environment state. Every external command
+# is dispatched through this fixed, root-owned allowlist.
+caller_uid="${PKEXEC_UID:-}"
+while IFS= read -r environment_name; do
+  unset "$environment_name" 2>/dev/null || true
+done < <(compgen -e)
+if [[ "$caller_uid" =~ ^[0-9]+$ ]]; then
+  export PKEXEC_UID="$caller_uid"
+fi
+PATH=/nonexistent
+export PATH
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+
+nmcli() { /usr/bin/nmcli "$@"; }
+grep() { /usr/bin/grep "$@"; }
+head() { /usr/bin/head "$@"; }
+cut() { /usr/bin/cut "$@"; }
+awk() { /usr/bin/awk "$@"; }
+iw() { /usr/bin/iw "$@"; }
+systemctl() { /usr/bin/systemctl "$@"; }
+systemd-run() { /usr/bin/systemd-run "$@"; }
+seq() { /usr/bin/seq "$@"; }
+sleep() { /usr/bin/sleep "$@"; }
+tr() { /usr/bin/tr "$@"; }
+cat() { /usr/bin/cat "$@"; }
+dirname() { /usr/bin/dirname "$@"; }
+stat() { /usr/bin/stat "$@"; }
+wc() { /usr/bin/wc "$@"; }
+ip() { /usr/bin/ip "$@"; }
+iptables() { /usr/bin/iptables "$@"; }
+sysctl() { /usr/bin/sysctl "$@"; }
+hostapd_cli() { /usr/bin/hostapd_cli "$@"; }
+readonly -f nmcli grep head cut awk iw systemctl systemd-run seq sleep
+readonly -f tr cat dirname stat wc
+readonly -f ip iptables sysctl hostapd_cli
+
+readonly STATE_TOOL="/usr/local/lib/omarchy-hotspot-secure-state"
+readonly DEVICE_ID_TOOL="/usr/local/lib/omarchy-hotspot-device-identification.sh"
+readonly DISCOVER_TOOL="/usr/local/lib/omarchy-hotspot-discover-device.sh"
+
+verify_root_tool() {
+  local path="$1" owner mode
+  [ -f "$path" ] && [ ! -L "$path" ] || { echo "unsafe helper dependency: $path" >&2; return 1; }
+  owner="$(stat -c %u "$path")"
+  mode="$(stat -c %a "$path")"
+  [ "$owner" = 0 ] || { echo "helper dependency is not root-owned: $path" >&2; return 1; }
+  (( (8#$mode & 8#022) == 0 )) || { echo "helper dependency is writable by non-root: $path" >&2; return 1; }
+}
+
+state_store() {
+  /usr/bin/python3 "$STATE_TOOL" "$@"
+}
 
 VIF="ap0"
 RUN_DIR="/run/omarchy-hotspot"
 STATE_DIR="/var/lib/omarchy-hotspot"
-PASS_FILE="$STATE_DIR/password"
-SSID_FILE="$STATE_DIR/ssid"
 AP_CONF="$RUN_DIR/hostapd.conf"
-AP_PID="$RUN_DIR/hostapd.pid"
 AP_SUBNET="10.42.0.0/24"
 AP_GATEWAY="10.42.0.1"
 LEASE_FILE="$RUN_DIR/dnsmasq.leases"
@@ -27,12 +80,16 @@ DISCOVERY_FILE="$RUN_DIR/device-discovery.tsv"
 ALIASES_FILE="$STATE_DIR/device-aliases.tsv"
 BLOCKED_FILE="$STATE_DIR/blocked-devices.tsv"
 
-if [ -r /usr/local/lib/omarchy-hotspot-device-identification.sh ]; then
+if (( EUID == 0 )); then
+  verify_root_tool "$STATE_TOOL"
+  verify_root_tool "$DEVICE_ID_TOOL"
+  verify_root_tool "$DISCOVER_TOOL"
   # Installed alongside this helper by install.sh.
   # shellcheck disable=SC1091
-  source /usr/local/lib/omarchy-hotspot-device-identification.sh
+  source "$DEVICE_ID_TOOL"
 else
-  # Development fallback resolved at runtime.
+  # Unprivileged development fallback. The passwordless installed path never
+  # sources code from the user-writable checkout.
   # shellcheck disable=SC1091
   source "$(dirname "${BASH_SOURCE[0]}")/device-identification.sh"
 fi
@@ -91,11 +148,7 @@ station_vht_center() {
 }
 
 ap_ssid() {
-  if [ -s "$SSID_FILE" ]; then
-    cat "$SSID_FILE"
-  else
-    echo "OmarchyHotspot"
-  fi
+  state_store read-ssid
 }
 
 vif_exists() {
@@ -116,50 +169,8 @@ wait_for_hostapd() {
   return 1
 }
 
-# The human who invoked us (root when run directly). The password must stay
-# out of other local users' reach but still be readable by the owner — the bar
-# widget (running as that user) reads it to render the join QR.
-real_user() {
-  if [ -n "${PKEXEC_UID:-}" ]; then
-    id -nu "$PKEXEC_UID"
-  elif [ -n "${SUDO_USER:-}" ]; then
-    echo "$SUDO_USER"
-  elif logname >/dev/null 2>&1; then
-    logname
-  else
-    id -un
-  fi
-}
-
-protect_passfile() {
-  chown "$(real_user)" "$PASS_FILE" 2>/dev/null || true
-  chmod 600 "$PASS_FILE"
-  if [ -f "$SSID_FILE" ]; then
-    chown "$(real_user)" "$SSID_FILE" 2>/dev/null || true
-    chmod 644 "$SSID_FILE" 2>/dev/null || true
-  fi
-  if [ -f "$ALIASES_FILE" ]; then
-    chown "$(real_user)" "$ALIASES_FILE" 2>/dev/null || true
-    chmod 600 "$ALIASES_FILE"
-  fi
-  if [ -f "$BLOCKED_FILE" ]; then
-    chown "$(real_user)" "$BLOCKED_FILE" 2>/dev/null || true
-    chmod 600 "$BLOCKED_FILE"
-  fi
-}
-
 ensure_state() {
-  mkdir -p "$STATE_DIR" "$RUN_DIR"
-  chmod 755 "$STATE_DIR"
-  chmod 700 "$RUN_DIR"
-  if [ ! -s "$PASS_FILE" ]; then
-    tr -dc 'A-Za-z0-9' </dev/urandom | head -c 10 >"$PASS_FILE" || true
-  fi
-  if [ ! -s "$SSID_FILE" ]; then
-    echo "OmarchyHotspot" >"$SSID_FILE" || true
-  fi
-  touch "$BLOCKED_FILE"
-  protect_passfile
+  state_store init
 }
 
 ensure_vif() {
@@ -239,7 +250,7 @@ write_hostapd_conf() {
       ;;
   esac
 
-  cat >"$AP_CONF" <<EOF
+  state_store write-hostapd <<EOF
 interface=$VIF
 driver=nl80211
 ctrl_interface=/run/hostapd
@@ -247,7 +258,7 @@ ssid=$(ap_ssid)
 hw_mode=$mode
 channel=$channel
 wpa=2
-wpa_passphrase=$(cat "$PASS_FILE")
+wpa_passphrase=$(state_store read-password)
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 ht_capab=$ht
@@ -258,7 +269,6 @@ ${seg1:+vht_oper_centr_freq_seg1_idx=$seg1}
 ignore_broadcast_ssid=0
 deny_mac_file=$BLOCKED_FILE
 EOF
-  chmod 600 "$AP_CONF"
 }
 
 start_ap() {
@@ -276,7 +286,7 @@ start_ap() {
   systemctl stop omarchy-hotspot 2>/dev/null || true
   # Transient unit: keeps hostapd in foreground (no -B fork bugs), logs to
   # journald, and survives the pkexec session.
-  if ! systemd-run --unit=omarchy-hotspot --collect hostapd "$AP_CONF"; then
+  if ! systemd-run --unit=omarchy-hotspot --collect /usr/bin/hostapd "$AP_CONF"; then
     iw dev "$VIF" del 2>/dev/null || true
     exit 1
   fi
@@ -318,7 +328,7 @@ start_ap() {
     servers=(--server=1.1.1.1 --server=1.0.0.1)
   fi
   systemctl stop omarchy-hotspot-dns 2>/dev/null || true
-  systemd-run --unit=omarchy-hotspot-dns --collect dnsmasq \
+  systemd-run --unit=omarchy-hotspot-dns --collect /usr/bin/dnsmasq \
     --keep-in-foreground \
     --interface="$VIF" \
     --bind-interfaces \
@@ -348,7 +358,7 @@ uplink_iface() {
 
 status_text() {
   if ! hotspot_on; then
-    echo "off $(ap_ssid)"
+    printf 'off\t%s\n' "$(ap_ssid)"
     return
   fi
   local iface channel clients
@@ -358,9 +368,19 @@ status_text() {
     channel="$(iw dev "$VIF" info 2>/dev/null | awk '/channel/ { print $2; exit }')"
   fi
   clients="$(iw dev "$VIF" station dump 2>/dev/null | grep -c '^Station' || true)"
-  # The passphrase is intentionally NOT echoed here; the bar reads it directly
-  # from the secret file (owned by the user) to keep it out of this channel.
-  echo "on $(ap_ssid) $(uplink_iface) ${channel:-} ${clients:-0}"
+  # The passphrase is intentionally not included in the general status output.
+  # The panel requests it only through the dedicated bounded helper action.
+  printf 'on\t%s\t%s\t%s\t%s\n' "$(ap_ssid)" "$(uplink_iface)" "${channel:-}" "${clients:-0}"
+}
+
+schedule_device_discovery() {
+  local mac="$1" ip="$2" unit
+  valid_mac "$mac" || return 0
+  [[ "$ip" =~ ^[0-9a-fA-F:.]+$ ]] || return 0
+  unit="omarchy-hotspot-discover-${mac//:/}.service"
+  systemd-run --quiet --collect --unit="$unit" \
+    /usr/bin/timeout --signal=KILL 2 /usr/bin/bash "$DISCOVER_TOOL" "$mac" "$ip" \
+    >/dev/null 2>&1 || true
 }
 
 clients_text() {
@@ -372,25 +392,31 @@ clients_text() {
     /^\tsignal:/ { signal=$2 }
     /^\tconnected time:/ { connected=$3; if (mac != "") print mac "\t" signal "\t" connected }
   ' | while IFS=$'\t' read -r mac signal connected; do
-    local ip resolved label source
+    local ip resolved label source discovery_ip discovery_attempt
     ip="$(lease_ip "$mac" "$leases")"
     resolved="$(resolve_device "$mac" "$ip" "$METADATA_FILE" "$DISCOVERY_FILE" "$ALIASES_FILE" "$OUI_FILE")"
     label="${resolved%%$'\t'*}"
     source="${resolved#*$'\t'}"
+    case "$source" in
+      unknown|vendor)
+        discovery_ip="$(tsv_value "$mac" "$DISCOVERY_FILE" 2)"
+        discovery_attempt="$(tsv_value "$mac" "$DISCOVERY_FILE" 5)"
+        if [ -n "$ip" ] && { [ "$discovery_ip" != "$ip" ] \
+          || ! [[ "$discovery_attempt" =~ ^[0-9]+$ ]] \
+          || (( EPOCHSECONDS - discovery_attempt >= 60 )); }; then
+          schedule_device_discovery "$mac" "$ip"
+        fi
+        ;;
+    esac
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$mac" "$ip" "$signal" "$connected" "$label" "$source"
   done
 }
 
 set_alias_from_stdin() {
   local mac alias
-  IFS= read -r mac
-  IFS= read -r alias || true
-  if [ -z "$alias" ]; then
-    remove_device_alias "$mac" "$ALIASES_FILE"
-  else
-    set_device_alias "$mac" "$alias" "$ALIASES_FILE"
-  fi
-  protect_passfile
+  IFS= read -r -n 18 mac || true
+  IFS= read -r -n 193 alias || true
+  printf '%s\n%s\n' "$mac" "$alias" | state_store set-alias
   echo "ok"
 }
 
@@ -413,8 +439,7 @@ block_connected_device() {
   local mac="${1,,}" label
   valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
   label="$(current_device_label "$mac")"
-  block_device "$mac" "$label" "$BLOCKED_FILE"
-  protect_passfile
+  printf '%s\n%s\n' "$mac" "$label" | state_store block
   if hotspot_on; then
     hostapd_cli -p /run/hostapd -i "$VIF" deny_acl ADD_MAC "$mac" | grep -qx OK
     hostapd_cli -p /run/hostapd -i "$VIF" deauthenticate "$mac" | grep -qx OK
@@ -423,16 +448,20 @@ block_connected_device() {
 
 unblock_connected_device() {
   local mac="${1,,}"
-  unblock_device "$mac" "$BLOCKED_FILE"
-  protect_passfile
+  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
+  printf '%s\n' "$mac" | state_store unblock
   if hotspot_on; then
     hostapd_cli -p /run/hostapd -i "$VIF" deny_acl DEL_MAC "$mac" | grep -qx OK
   fi
 }
 
 blocked_text() {
-  [ -r "$BLOCKED_FILE" ] && cat "$BLOCKED_FILE"
-  return 0
+  state_store read-blocked
+}
+
+password_text() {
+  state_store read-password
+  printf '\n'
 }
 
 set_password() {
@@ -441,7 +470,7 @@ set_password() {
   # process command line. Invoke as: printf '%s\n' "$pw" | helper set-password
   # A single line is read, so the caller sends a trailing newline and need not
   # close the stream (which would break repeated invocations).
-  IFS= read -r newpass
+  IFS= read -r -n 64 newpass || true
   if [ -z "$newpass" ]; then
     echo "No password provided on stdin" >&2
     return 1
@@ -464,8 +493,7 @@ set_password() {
     return 1
   fi
   ensure_state
-  printf '%s' "$newpass" >"$PASS_FILE"
-  protect_passfile
+  printf '%s' "$newpass" | state_store write-password
   if hotspot_on; then
     write_hostapd_conf
     systemctl restart omarchy-hotspot
@@ -479,7 +507,7 @@ set_password() {
 
 set_ssid() {
   local newssid byte_len
-  IFS= read -r newssid
+  IFS= read -r -n 33 newssid || true
   if [ -z "$newssid" ]; then
     echo "No SSID provided on stdin" >&2
     return 1
@@ -497,8 +525,7 @@ set_ssid() {
     return 1
   fi
   ensure_state
-  printf '%s' "$newssid" >"$SSID_FILE"
-  protect_passfile
+  printf '%s' "$newssid" | state_store write-ssid
   if hotspot_on; then
     write_hostapd_conf
     systemctl restart omarchy-hotspot
@@ -510,43 +537,12 @@ set_ssid() {
   echo "ok"
 }
 
-run_tests() {
-  # Compare daemonization modes; foreground worked, -B fails silently.
-  ensure_state
-  write_hostapd_conf
-  local iface phy
-  iface="$(station_iface)"
-  phy="phy$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/ { print $2; exit }')"
-
-  echo "--- variant C: foreground with -f logfile ---"
-  iw dev "$VIF" del 2>/dev/null || true
-  iw phy "$phy" interface add "$VIF" type __ap 2>&1 | head -2
-  ip link set "$VIF" up 2>&1
-  timeout 5 hostapd -f "$RUN_DIR/test.log" "$AP_CONF" 2>&1 | head -5
-  echo "log:"; tail -3 "$RUN_DIR/test.log" 2>&1
-  iw dev "$VIF" del 2>/dev/null || true
-
-  echo "--- variant D: nohup background (no -B) ---"
-  iw phy "$phy" interface add "$VIF" type __ap 2>&1 | head -2
-  ip link set "$VIF" up 2>&1
-  nohup hostapd -P "$AP_PID" -f "$RUN_DIR/test2.log" "$AP_CONF" >/dev/null 2>&1 &
-  local pid=$!
-  sleep 3
-  echo "bg pid $pid alive: $(kill -0 $pid 2>/dev/null && echo yes || echo no)"
-  pgrep -a hostapd 2>&1 | head -2
-  echo "log:"; tail -3 "$RUN_DIR/test2.log" 2>&1
-  kill $pid 2>/dev/null || true
-  pkill -f "hostapd .*hostapd.conf" 2>/dev/null || true
-  iw dev "$VIF" del 2>/dev/null || true
-}
-
 # The passwordless pkexec polkit rule lets the bar run this helper as root.
-# Restrict that path to the subcommands the bar actually uses; diagnostic
-# subcommands (debug/sniff/test) stay available to direct root invocation
-# (e.g. `sudo omarchy-hotspot-helper debug`) but not via the passwordless path.
+# This dispatch is the complete privileged allowlist.
 helper_dispatch() {
   case "$1" in
     status) status_text ;;
+    read-password) password_text ;;
     clients) clients_text ;;
     blocked) blocked_text ;;
     toggle)
@@ -563,30 +559,8 @@ helper_dispatch() {
     block-device) block_connected_device "${2:-}" ;;
     unblock-device) unblock_connected_device "${2:-}" ;;
     *)
-      if [ -n "${PKEXEC_UID:-}" ]; then
-        echo "Subcommand '$1' is not permitted via pkexec" >&2
-        exit 2
-      fi
-      case "$1" in
-        test) run_tests ;;
-        sniff)
-          timeout 6 tcpdump -i "$VIF" -n -c 25 2>&1 | head -28
-          ;;
-        debug)
-          echo "--- hostapd.conf ---"
-          cat "$AP_CONF" 2>&1
-          echo "--- hostapd.log ---"
-          tail -10 "$RUN_DIR/hostapd.log" 2>&1
-          echo "--- ap0 TX ---"
-          ip -s link show "$VIF" 2>&1 | grep -A1 'TX:'
-          echo "--- hostapd procs ---"
-          pgrep -a hostapd 2>&1
-          ;;
-        *)
-          echo "usage: omarchy-hotspot-helper {status|clients|blocked|toggle|set-password|set-ssid|set-device-alias|disconnect-device|block-device|unblock-device|debug|test}" >&2
-          exit 2
-          ;;
-      esac
+      echo "usage: omarchy-hotspot-helper {status|read-password|clients|blocked|toggle|set-password|set-ssid|set-device-alias|disconnect-device|block-device|unblock-device}" >&2
+      exit 2
       ;;
   esac
 }

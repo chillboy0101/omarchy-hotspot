@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 
 lease_hostname() {
   local mac="${1,,}" lease_file="$2"
@@ -79,65 +79,4 @@ resolve_device() {
 
 valid_mac() {
   [[ "$1" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]
-}
-
-set_device_alias() {
-  local mac="${1,,}" alias="$2" aliases_file="$3" length clean tmp
-  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
-  [ -n "$alias" ] || { echo "Device name cannot be empty" >&2; return 1; }
-  printf '%s' "$alias" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1 || { echo "Device name must be valid UTF-8" >&2; return 1; }
-  clean="$(printf '%s' "$alias" | LC_ALL=C tr -d '\000-\037\177')"
-  [ "$clean" = "$alias" ] || { echo "Device name contains unsupported control characters" >&2; return 1; }
-  length="$(printf '%s' "$alias" | wc -m)"
-  [ "$length" -le 48 ] || { echo "Device name must be 48 characters or fewer" >&2; return 1; }
-  mkdir -p "$(dirname "$aliases_file")"
-  touch "$aliases_file"
-  chmod 600 "$aliases_file"
-  exec 8>"$aliases_file.lock"
-  flock 8
-  tmp="$(mktemp "${aliases_file}.XXXXXX")"
-  awk -F '\t' -v wanted="$mac" 'tolower($1) != wanted' "$aliases_file" >"$tmp"
-  printf '%s\t%s\n' "$mac" "$alias" >>"$tmp"
-  chmod 600 "$tmp"
-  mv -f "$tmp" "$aliases_file"
-}
-
-remove_device_alias() {
-  local mac="${1,,}" aliases_file="$2" tmp
-  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
-  [ -e "$aliases_file" ] || return 0
-  exec 8>"$aliases_file.lock"
-  flock 8
-  tmp="$(mktemp "${aliases_file}.XXXXXX")"
-  awk -F '\t' -v wanted="$mac" 'tolower($1) != wanted' "$aliases_file" >"$tmp"
-  chmod 600 "$tmp"
-  mv -f "$tmp" "$aliases_file"
-}
-
-block_device() {
-  local mac="${1,,}" label="$2" blocked_file="$3" tmp
-  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
-  label="$(printf '%s' "${label:-Unknown device}" | LC_ALL=C tr -d '\000-\037\177')"
-  mkdir -p "$(dirname "$blocked_file")"
-  touch "$blocked_file"
-  chmod 600 "$blocked_file"
-  exec 7>"$blocked_file.lock"
-  flock 7
-  tmp="$(mktemp "${blocked_file}.XXXXXX")"
-  awk -F '\t' -v wanted="$mac" 'tolower($1) != wanted' "$blocked_file" >"$tmp"
-  printf '%s\t%s\n' "$mac" "$label" >>"$tmp"
-  chmod 600 "$tmp"
-  mv -f "$tmp" "$blocked_file"
-}
-
-unblock_device() {
-  local mac="${1,,}" blocked_file="$2" tmp
-  valid_mac "$mac" || { echo "Invalid device address" >&2; return 1; }
-  [ -e "$blocked_file" ] || return 0
-  exec 7>"$blocked_file.lock"
-  flock 7
-  tmp="$(mktemp "${blocked_file}.XXXXXX")"
-  awk -F '\t' -v wanted="$mac" 'tolower($1) != wanted' "$blocked_file" >"$tmp"
-  chmod 600 "$tmp"
-  mv -f "$tmp" "$blocked_file"
 }

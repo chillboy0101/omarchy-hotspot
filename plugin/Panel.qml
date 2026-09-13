@@ -20,9 +20,11 @@ Panel {
 
   readonly property string helper: "/usr/local/bin/omarchy-hotspot-helper"
   readonly property string qrScript: decodeURIComponent(String(Qt.resolvedUrl("qr.sh")).replace(/^file:\/\//, ""))
+  readonly property string processRunner: decodeURIComponent(String(Qt.resolvedUrl("run-bounded.py")).replace(/^file:\/\//, ""))
+  readonly property string copyScript: decodeURIComponent(String(Qt.resolvedUrl("copy-secret.py")).replace(/^file:\/\//, ""))
+  readonly property string python: "/usr/bin/python3"
+  readonly property string pkexec: "/usr/bin/pkexec"
   property string hotspotSsid: "OmarchyHotspot"
-  readonly property string ssidFile: "/var/lib/omarchy-hotspot/ssid"
-  readonly property string passwordFile: "/var/lib/omarchy-hotspot/password"
 
   // "off" | "on" | "busy" | "error"
   property string hotspotState: "off"
@@ -63,6 +65,7 @@ Panel {
   property var qrRows: []
   property int qrSize: 0
   property bool qrLoading: false
+  property bool qrPendingPassword: false
 
   // Paired Material Design tethering glyphs, matching the native panels'
   // distinct connected/disconnected icon treatment.
@@ -127,18 +130,40 @@ Panel {
     qrOverlayOpen = false
   }
 
+  function boundedCommand(seconds, outputLimit, program, args) {
+    return [root.python, root.processRunner, String(seconds), String(outputLimit), program].concat(args || [])
+  }
+
+  function startBounded(proc, seconds, outputLimit, program, args) {
+    proc.stdoutText = ""
+    proc.stderrText = ""
+    proc.command = boundedCommand(seconds, outputLimit, program, args)
+    proc.running = true
+  }
+
+  function startHelper(proc, action, args, seconds, outputLimit) {
+    startBounded(proc, seconds || 5, outputLimit || 8192, root.pkexec, [root.helper, action].concat(args || []))
+  }
+
+  function appendProcessOutput(proc, propertyName, chunk) {
+    var next = proc[propertyName] + String(chunk || "") + "\n"
+    if (next.length > 65536) {
+      proc[propertyName] = next.slice(0, 65536)
+      proc.signal(9)
+      return
+    }
+    proc[propertyName] = next
+  }
+
   function refresh() {
     if (statusProc.running || isBusy) return
     // pkexec (passwordless via polkit rule): channel + client counts need root.
-    statusProc.command = ["pkexec", root.helper, "status"]
-    statusProc.running = true
+    startHelper(statusProc, "status", [], 4, 4096)
     if (isOn && !clientsProc.running) {
-      clientsProc.command = ["pkexec", root.helper, "clients"]
-      clientsProc.running = true
+      startHelper(clientsProc, "clients", [], 6, 32768)
     }
     if (!blockedProc.running) {
-      blockedProc.command = ["pkexec", root.helper, "blocked"]
-      blockedProc.running = true
+      startHelper(blockedProc, "blocked", [], 4, 16384)
     }
   }
 
@@ -146,8 +171,7 @@ Panel {
     if (deviceActionProc.running || !mac) return
     deviceActionBusyMac = mac
     deviceActionError = ""
-    deviceActionProc.command = ["pkexec", root.helper, action, mac]
-    deviceActionProc.running = true
+    startHelper(deviceActionProc, action, [mac], 8, 4096)
   }
 
   function toggleHotspot() {
@@ -157,22 +181,26 @@ Panel {
     lastError = ""
     // Commit the whole panel's requested state before starting backend work.
     Qt.callLater(function() {
-      toggleProc.command = ["pkexec", root.helper, "toggle"]
-      toggleProc.running = true
+      root.startHelper(toggleProc, "toggle", [], 20, 8192)
     })
   }
 
   function generateQr() {
     if (qrProc.running || !isOn) return
+    if (!hotspotPassword) {
+      qrPendingPassword = true
+      readPassword()
+      return
+    }
+    qrPendingPassword = false
     qrLoading = true
-    qrProc.command = ["bash", root.qrScript]
-    qrProc.running = true
+    startBounded(qrProc, 4, 65536, root.qrScript, [])
   }
 
   function applyStatus(raw) {
     // A poll started before the click must not undo the requested UI state.
     if (isBusy) return
-    var parts = String(raw || "").trim().split(/\s+/)
+    var parts = String(raw || "").trim().split("\t")
     if (parts[0] === "on") {
       hotspotState = "on"
       if (parts[1] && !root.editingHotspot) hotspotSsid = parts[1]
@@ -180,16 +208,13 @@ Panel {
       hotspotChannel = parts[3] || ""
       hotspotClients = parts[4] || ""
       if (!clientsProc.running) {
-        clientsProc.command = ["pkexec", root.helper, "clients"]
-        clientsProc.running = true
+        startHelper(clientsProc, "clients", [], 6, 32768)
       }
       if (!blockedProc.running) {
-        blockedProc.command = ["pkexec", root.helper, "blocked"]
-        blockedProc.running = true
+        startHelper(blockedProc, "blocked", [], 4, 16384)
       }
       if (qrSize === 0 && !qrProc.running) Qt.callLater(generateQr)
-      // Pull the passphrase straight from the user-owned secret file rather
-      // than from the status channel.
+      // Retrieve the root-owned passphrase through the narrow helper action.
       readPassword()
     } else if (root.isError) {
       // We're showing a failure. A fresh status of "off" is expected right
@@ -210,8 +235,7 @@ Panel {
 
   function readPassword() {
     if (passReadProc.running) return
-    passReadProc.command = ["cat", root.passwordFile]
-    passReadProc.running = true
+    startHelper(passReadProc, "read-password", [], 4, 256)
   }
 
   function formatConnectedTime(value) {
@@ -261,12 +285,7 @@ Panel {
 
   function copyPassword() {
     if (!root.bar || !hotspotPassword) return
-    // Copy from the secret file (user-readable, 600) so the password never
-    // appears in a process command line.
-    Quickshell.execDetached(["bash", "-c", "cat " + root.passwordFile + " | wl-copy"])
-    // Flash the copy icon to a checkmark so the click is visibly acknowledged.
-    copyFlash = true
-    copyFlashTimer.restart()
+    startBounded(copyProc, 4, 2048, root.copyScript, [])
   }
 
   function startHotspotEdit() {
@@ -309,8 +328,7 @@ Panel {
     passwordBusy = true
     passwordError = ""
     pendingPassword = passwordDraft
-    passProc.command = ["pkexec", root.helper, "set-password"]
-    passProc.running = true
+    startHelper(passProc, "set-password", [], 15, 4096)
   }
 
   function saveHotspotEdit() {
@@ -336,8 +354,7 @@ Panel {
       ssidBusy = true
       pendingSsid = draft
       pendingPassword = newPassword
-      ssidProc.command = ["pkexec", root.helper, "set-ssid"]
-      ssidProc.running = true
+      startHelper(ssidProc, "set-ssid", [], 15, 4096)
     } else if (newPassword.length > 0) {
       savePendingPassword()
     } else {
@@ -375,8 +392,7 @@ Panel {
     deviceAliasBusy = true
     deviceAliasError = ""
     pendingDeviceAlias = alias
-    aliasProc.command = ["pkexec", root.helper, "set-device-alias"]
-    aliasProc.running = true
+    startHelper(aliasProc, "set-device-alias", [], 6, 4096)
   }
 
   function statusLine() {
@@ -461,18 +477,25 @@ Panel {
   // ---- Processes --------------------------------------------------------
   Process {
     id: statusProc
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.applyStatus(text) }
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(statusProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(statusProc, "stderrText", data) } }
     onExited: function(code) {
-      if (code !== 0 && hotspotState !== "busy") hotspotState = "error"
+      if (code === 0) root.applyStatus(stdoutText)
+      else if (hotspotState !== "busy") hotspotState = "error"
     }
   }
 
   Process {
     id: clientsProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var rows = String(text || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(clientsProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(clientsProc, "stderrText", data) } }
+    onExited: function(code) {
+      if (code === 0) {
+        var rows = String(stdoutText || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
         root.hotspotDevices = rows.map(function(line) {
           var p = line.split("\t")
           return {
@@ -484,32 +507,36 @@ Panel {
             source: p[5] || "unknown"
           }
         }).filter(function(device) { return device.mac !== "" })
-      }
+      } else root.hotspotDevices = []
     }
-    onExited: function(code) { if (code !== 0) root.hotspotDevices = [] }
   }
 
   Process {
     id: blockedProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var rows = String(text || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(blockedProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(blockedProc, "stderrText", data) } }
+    onExited: function(code) {
+      if (code === 0) {
+        var rows = String(stdoutText || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
         root.blockedDevices = rows.map(function(line) {
           var p = line.split("\t")
           return { mac: p[0] || "", name: p[1] || "Unknown device" }
         }).filter(function(device) { return device.mac !== "" })
-      }
+      } else root.blockedDevices = []
     }
   }
 
   Process {
     id: deviceActionProc
-    stdout: StdioCollector { id: deviceActionOut; waitForEnd: true }
-    stderr: StdioCollector { id: deviceActionErr; waitForEnd: true }
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(deviceActionProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(deviceActionProc, "stderrText", data) } }
     onExited: function(code) {
       if (code !== 0) {
-        root.deviceActionError = String(deviceActionErr.text || deviceActionOut.text || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
+        root.deviceActionError = String(stderrText || stdoutText || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
       }
       root.deviceActionBusyMac = ""
       root.refresh()
@@ -518,11 +545,13 @@ Panel {
 
   Process {
     id: toggleProc
-    stdout: StdioCollector { id: toggleOut; waitForEnd: true }
-    stderr: StdioCollector { id: toggleErr; waitForEnd: true }
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(toggleProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(toggleProc, "stderrText", data) } }
     onExited: function(code) {
       if (code !== 0) {
-        var detail = String(toggleErr.text || toggleOut.text || "").replace(/\s+/g, " ").trim()
+        var detail = String(stderrText || stdoutText || "").replace(/\s+/g, " ").trim()
         root.lastError = detail ? detail.slice(0, 120) : ("exit " + code)
         root.hotspotState = "error"
       } else {
@@ -540,15 +569,17 @@ Panel {
   Process {
     id: aliasProc
     stdinEnabled: true
-    stdout: StdioCollector { id: aliasOut; waitForEnd: true }
-    stderr: StdioCollector { id: aliasErr; waitForEnd: true }
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(aliasProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(aliasProc, "stderrText", data) } }
     onStarted: function() {
       aliasProc.write(root.editingDeviceMac + "\n" + root.pendingDeviceAlias + "\n")
     }
     onExited: function(code) {
       deviceAliasBusy = false
       if (code !== 0) {
-        deviceAliasError = String(aliasErr.text || aliasOut.text || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
+        deviceAliasError = String(stderrText || stdoutText || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
         return
       }
       cancelDeviceAlias()
@@ -558,26 +589,49 @@ Panel {
 
   Process {
     id: qrProc
-    stdout: StdioCollector { id: qrOut; waitForEnd: true; onStreamFinished: root.applyQr(text) }
-    stderr: StdioCollector { id: qrErr; waitForEnd: true }
+    stdinEnabled: true
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(qrProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(qrProc, "stderrText", data) } }
+    onStarted: qrProc.write(root.hotspotSsid + "\n" + root.hotspotPassword + "\n")
     onExited: function(code) {
-      if (code !== 0) root.lastError = String(qrErr.text || "").trim().slice(0, 120) || ("QR failed: exit " + code)
+      if (code === 0) root.applyQr(stdoutText)
+      else root.lastError = String(stderrText || "").trim().slice(0, 120) || ("QR failed: exit " + code)
       qrLoading = false
+    }
+  }
+
+  Process {
+    id: copyProc
+    stdinEnabled: true
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(copyProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(copyProc, "stderrText", data) } }
+    onStarted: copyProc.write(root.hotspotPassword + "\n")
+    onExited: function(code) {
+      if (code === 0) {
+        root.copyFlash = true
+        copyFlashTimer.restart()
+      } else root.lastError = String(stderrText || "").trim().slice(0, 120) || ("Copy failed: exit " + code)
     }
   }
 
   Process {
     id: ssidProc
     stdinEnabled: true
-    stdout: StdioCollector { id: ssidOut; waitForEnd: true }
-    stderr: StdioCollector { id: ssidErr; waitForEnd: true }
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(ssidProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(ssidProc, "stderrText", data) } }
     onStarted: function() {
       ssidProc.write(root.pendingSsid + "\n")
     }
     onExited: function(code) {
       ssidBusy = false
       if (code !== 0) {
-        ssidError = String(ssidErr.text || ssidOut.text || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
+        ssidError = String(stderrText || stdoutText || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
         savePasswordAfterSsid = false
         pendingPassword = ""
         return
@@ -598,8 +652,10 @@ Panel {
   Process {
     id: passProc
     stdinEnabled: true
-    stdout: StdioCollector { id: passOut; waitForEnd: true }
-    stderr: StdioCollector { id: passErr; waitForEnd: true }
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(passProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(passProc, "stderrText", data) } }
     onStarted: function() {
       // Send the passphrase as a single line (newline-terminated); the helper
       // reads one line, so we never need to close stdin.
@@ -608,7 +664,7 @@ Panel {
     onExited: function(code) {
       passwordBusy = false
       if (code !== 0) {
-        passwordError = String(passErr.text || passOut.text || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
+        passwordError = String(stderrText || stdoutText || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
         pendingPassword = ""
         return
       }
@@ -620,18 +676,21 @@ Panel {
     }
   }
 
-  // Reads the passphrase directly from the user-owned secret file (no root,
-  // no passwordless pkexec), keeping it out of the status channel.
+  // The passphrase stays root-owned at rest and is returned only by the
+  // helper's allowlisted password action.
   Process {
     id: passReadProc
-    stdout: StdioCollector {
-      id: passReadOut
-      waitForEnd: true
-      onStreamFinished: function() {
+    property string stdoutText: ""
+    property string stderrText: ""
+    stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(passReadProc, "stdoutText", data) } }
+    stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(passReadProc, "stderrText", data) } }
+    onExited: function(code) {
+      if (code === 0) {
         if (root.opened) {
-          var password = String(passReadOut.text || "").trim()
+          var password = String(stdoutText || "").trim()
           if (password !== root.hotspotPassword) root.hidePassword()
           root.hotspotPassword = password
+          if (root.qrPendingPassword) Qt.callLater(root.generateQr)
         }
       }
     }

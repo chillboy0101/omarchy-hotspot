@@ -7,21 +7,30 @@ on:
 
 jobs:
   lint:
-    name: Shellcheck + syntax + manifest
+    name: Security + syntax + manifest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: Shellcheck (helper, installer, QR generator)
         run: |
-          shellcheck src/omarchy-hotspot-helper src/device-identification.sh src/discover-device.sh src/lease-event.sh install.sh plugin/qr.sh tests/device-access-test.sh tests/device-alias-test.sh tests/device-identification-test.sh tests/discovery-test.sh tests/lease-event-test.sh tests/panel-behavior-test.sh
+          shellcheck src/omarchy-hotspot-helper src/device-identification.sh src/discover-device.sh src/lease-event.sh install.sh plugin/qr.sh tests/*.sh
 
       - name: Bash syntax check
         run: |
-          bash -n src/omarchy-hotspot-helper install.sh plugin/qr.sh
+          bash -n src/omarchy-hotspot-helper src/device-identification.sh src/discover-device.sh src/lease-event.sh install.sh plugin/qr.sh tests/*.sh
+
+      - name: Python syntax and security tests
+        run: |
+          python3 -m py_compile plugin/run-bounded.py plugin/copy-secret.py src/secure-state.py tests/test_run_bounded.py tests/test_secure_state.py
+          bash tests/security-hardening-test.sh
+
+      - name: Plugin behavior tests
+        run: |
+          for test in tests/*-test.sh; do bash "$test"; done
 
       - name: Validate plugin manifest is valid JSON
         run: |

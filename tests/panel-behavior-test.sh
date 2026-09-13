@@ -1,8 +1,10 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 panel="$repo_dir/plugin/Panel.qml"
+
+grep -q 'trim().split("\\t")' "$panel"
 
 editor_flow="$(sed -n '/function startHotspotEdit()/,/^  }/p' "$panel")"
 if grep -Eq 'hotspotNameField\.(selectAll|forceActiveFocus)' <<<"$editor_flow"; then
