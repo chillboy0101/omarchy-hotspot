@@ -22,6 +22,7 @@ done < <(compgen -e)
 if [[ "$caller_uid" =~ ^[0-9]+$ ]]; then
   export PKEXEC_UID="$caller_uid"
 fi
+# shellcheck disable=SC2123 # Deliberately disable command lookup across the privilege boundary.
 PATH=/nonexistent
 export PATH
 export LANG=C.UTF-8
@@ -56,7 +57,10 @@ readonly DISCOVER_TOOL="/usr/local/lib/omarchy-hotspot-discover-device.sh"
 
 verify_root_tool() {
   local path="$1" owner mode
-  [ -f "$path" ] && [ ! -L "$path" ] || { echo "unsafe helper dependency: $path" >&2; return 1; }
+  if [ ! -f "$path" ] || [ -L "$path" ]; then
+    echo "unsafe helper dependency: $path" >&2
+    return 1
+  fi
   owner="$(stat -c %u "$path")"
   mode="$(stat -c %a "$path")"
   [ "$owner" = 0 ] || { echo "helper dependency is not root-owned: $path" >&2; return 1; }
@@ -85,12 +89,12 @@ if (( EUID == 0 )); then
   verify_root_tool "$DEVICE_ID_TOOL"
   verify_root_tool "$DISCOVER_TOOL"
   # Installed alongside this helper by install.sh.
-  # shellcheck disable=SC1091
+  # shellcheck disable=SC1090,SC1091
   source "$DEVICE_ID_TOOL"
 else
   # Unprivileged development fallback. The passwordless installed path never
   # sources code from the user-writable checkout.
-  # shellcheck disable=SC1091
+  # shellcheck disable=SC1090,SC1091
   source "$(dirname "${BASH_SOURCE[0]}")/device-identification.sh"
 fi
 

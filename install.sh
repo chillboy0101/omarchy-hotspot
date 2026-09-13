@@ -30,6 +30,7 @@ fi
 if [ -n "$sudo_user" ]; then
   export SUDO_USER="$sudo_user"
 fi
+# shellcheck disable=SC2123 # Deliberately disable command lookup after privilege elevation.
 PATH=/nonexistent
 export PATH
 export LANG=C.UTF-8
@@ -67,8 +68,7 @@ echo "==> Installing polkit rule (passwordless pkexec for the helper)"
   | /usr/bin/python3 /usr/local/lib/omarchy-hotspot-secure-state write-polkit-rule
 
 echo "==> Telling NetworkManager to leave ap0 alone"
-/usr/bin/cat "$NM_CONF_SRC" \
-  | /usr/bin/python3 /usr/local/lib/omarchy-hotspot-secure-state write-nm-config
+/usr/bin/python3 /usr/local/lib/omarchy-hotspot-secure-state write-nm-config < "$NM_CONF_SRC"
 /usr/bin/nmcli general reload || true
 
 echo

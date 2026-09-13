@@ -10,6 +10,8 @@ grep -q 'upsert-metadata' "$script"
 grep -q 'delete-metadata' "$script"
 grep -q 'delete-discovery' "$script"
 grep -q '/usr/bin/systemd-run' "$script"
-! grep -Eq '>>|OMARCHY_HOTSPOT_(METADATA|DISCOVERY|DISCOVER_COMMAND)' "$script"
+if grep -Eq '>>|OMARCHY_HOTSPOT_(METADATA|DISCOVERY|DISCOVER_COMMAND)' "$script"; then
+  exit 1
+fi
 
 echo "lease event tests passed"

@@ -36,6 +36,7 @@ if grep -q '/var/lib/omarchy-hotspot' "$qr"; then
   echo "QR generator must receive secrets over stdin" >&2
   exit 1
 fi
+# shellcheck disable=SC2016 # Verify literal legacy variable references in the target script.
 if grep -Eq '>[[:space:]]*"?\$(PASS_FILE|SSID_FILE|AP_CONF)' "$helper"; then
   echo "privileged state must use the no-follow atomic state writer" >&2
   exit 1

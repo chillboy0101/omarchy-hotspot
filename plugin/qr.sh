@@ -7,6 +7,7 @@ umask 077
 while IFS= read -r environment_name; do
   unset "$environment_name" 2>/dev/null || true
 done < <(compgen -e)
+# shellcheck disable=SC2123 # Deliberately disable command lookup for QR generation.
 PATH=/nonexistent
 export PATH
 

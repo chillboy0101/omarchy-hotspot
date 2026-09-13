@@ -10,6 +10,7 @@ done < <(compgen -e)
 export DNSMASQ_SUPPLIED_HOSTNAME="$supplied_hostname"
 export DNSMASQ_VENDOR_CLASS="$supplied_vendor_class"
 export DNSMASQ_CLIENT_ID="$supplied_client_id"
+# shellcheck disable=SC2123 # Deliberately disable command lookup in the root lease hook.
 PATH=/nonexistent
 export PATH LANG=C.UTF-8 LC_ALL=C.UTF-8
 
