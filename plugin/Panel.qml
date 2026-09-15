@@ -816,8 +816,9 @@ Panel {
     }
 
     onPressed: function(btn) {
-      if (btn !== Qt.LeftButton) return
-      if (root.opened) root.close()
+      if (btn === Qt.RightButton) root.toggleHotspot()
+      else if (btn === Qt.MiddleButton) root.refresh()
+      else if (root.opened) root.close()
       else root.open()
     }
   }
