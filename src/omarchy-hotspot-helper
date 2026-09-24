@@ -159,20 +159,6 @@ vif_exists() {
   iw dev "$VIF" info >/dev/null 2>&1
 }
 
-concurrent_ap_supported() {
-  local phy="$1"
-  iw phy "$phy" info 2>/dev/null | awk '
-    /valid interface combinations:/ { in_combinations=1; next }
-    in_combinations && /^[[:space:]]*\*/ {
-      if ($0 ~ /managed/ && $0 ~ /AP/) {
-        found=1
-        exit
-      }
-    }
-    END { exit(found ? 0 : 1) }
-  '
-}
-
 hotspot_on() {
   systemctl is-active --quiet omarchy-hotspot 2>/dev/null
 }
@@ -197,11 +183,13 @@ ensure_vif() {
   iface="$(station_iface)"
   [ -n "$iface" ] || { echo "no-wifi-device" >&2; return 1; }
   phy="phy$(iw dev "$iface" info | awk '/wiphy/ { print $2; exit }')"
-  if ! concurrent_ap_supported "$phy"; then
-    echo "Wi-Fi adapter $phy does not support concurrent managed+AP interfaces; it cannot keep Wi-Fi connected while hosting this hotspot. Use a Wi-Fi adapter that advertises a managed+AP interface combination." >&2
+  local driver
+  driver="$(cat "/sys/class/ieee80211/$phy/device/uevent" 2>/dev/null | awk -F= '/^DRIVER=/ { print $2; exit }')"
+  driver="${driver:-unknown}"
+  if ! iw phy "$phy" interface add "$VIF" type __ap; then
+    echo "Wi-Fi adapter driver $driver on $phy cannot create a concurrent AP interface; it cannot keep Wi-Fi connected while hosting this hotspot. Use a Wi-Fi adapter whose driver supports concurrent managed+AP interfaces." >&2
     return 1
   fi
-  iw phy "$phy" interface add "$VIF" type __ap
   # The RTL8723DE firmware rejects concurrent interfaces with one MAC.
   # Derive a stable locally administered address from the station address.
   local ap_mac
