@@ -15,8 +15,8 @@ create_line="$(grep -n "interface add \"\$VIF\" type __ap" "$helper" | cut -d: -
 failure_line="$(sed -n "${create_line},$((create_line + 3))p" "$helper" | grep -n 'if ! iw phy' | cut -d: -f1)"
 [[ -n "$failure_line" ]]
 
-mac_guard_line="$(grep -n 'if \[\[ "\${current_ap_mac,,}" != "\${ap_mac,,}" \]\]' "$helper" | cut -d: -f1)"
-mac_set_line="$(grep -n 'if ! ip link set "\$VIF" address "\$ap_mac"' "$helper" | cut -d: -f1)"
+mac_guard_line="$(grep -n "if \[\[ \"\${current_ap_mac,,}\" != \"\${ap_mac,,}\" \]\]" "$helper" | cut -d: -f1)"
+mac_set_line="$(grep -n "if ! ip link set \"\$VIF\" address \"\$ap_mac\"" "$helper" | cut -d: -f1)"
 [[ "$mac_guard_line" -lt "$mac_set_line" ]]
 
 echo "hardware capability guard tests passed"
