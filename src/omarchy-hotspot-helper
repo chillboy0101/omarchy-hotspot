@@ -192,10 +192,17 @@ ensure_vif() {
   fi
   # The RTL8723DE firmware rejects concurrent interfaces with one MAC.
   # Derive a stable locally administered address from the station address.
-  local ap_mac
-  ap_mac="$(cat "/sys/class/net/$iface/address")"
-  ap_mac="02${ap_mac:2}"
-  ip link set "$VIF" address "$ap_mac"
+  local ap_mac current_ap_mac station_mac
+  station_mac="$(<"/sys/class/net/$iface/address")"
+  ap_mac="02${station_mac:2}"
+  current_ap_mac="$(<"/sys/class/net/$VIF/address")"
+  if [[ "${current_ap_mac,,}" != "${ap_mac,,}" ]]; then
+    if ! ip link set "$VIF" address "$ap_mac"; then
+      iw dev "$VIF" del 2>/dev/null || true
+      echo "failed to set the hotspot interface MAC address; the adapter rejected the requested ap0 address" >&2
+      return 1
+    fi
+  fi
   for _ in $(seq 1 20); do
     vif_exists && return 0
     sleep 0.2
