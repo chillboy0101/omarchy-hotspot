@@ -4,5 +4,3 @@ __pycache__/
 *.pyc
 *.png
 *.log
-!docs/hotspot-panel.png
-!preview.png

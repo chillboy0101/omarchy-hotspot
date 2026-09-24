@@ -183,7 +183,13 @@ ensure_vif() {
   iface="$(station_iface)"
   [ -n "$iface" ] || { echo "no-wifi-device" >&2; return 1; }
   phy="phy$(iw dev "$iface" info | awk '/wiphy/ { print $2; exit }')"
-  iw phy "$phy" interface add "$VIF" type __ap
+  local driver
+  driver="$(awk -F= '/^DRIVER=/ { print $2; exit }' "/sys/class/ieee80211/$phy/device/uevent" 2>/dev/null)"
+  driver="${driver:-unknown}"
+  if ! iw phy "$phy" interface add "$VIF" type __ap; then
+    echo "Wi-Fi adapter driver $driver on $phy cannot create a concurrent AP interface; it cannot keep Wi-Fi connected while hosting this hotspot. Use a Wi-Fi adapter whose driver supports concurrent managed+AP interfaces." >&2
+    return 1
+  fi
   # The RTL8723DE firmware rejects concurrent interfaces with one MAC.
   # Derive a stable locally administered address from the station address.
   local ap_mac
