@@ -24,4 +24,10 @@ if grep -q "ip link set \"\$VIF\" up" "$helper"; then
   exit 1
 fi
 
+grep -q "hostapd_cli -p /run/hostapd -i \"\$VIF\" status" "$helper"
+grep -q "grep -qx 'state=ENABLED'" "$helper"
+wait_line="$(grep -n 'wait_for_hostapd' "$helper" | head -1 | cut -d: -f1)"
+dns_line="$(grep -n 'systemd-run --unit=omarchy-hotspot-dns' "$helper" | head -1 | cut -d: -f1)"
+[[ "$wait_line" -lt "$dns_line" ]]
+
 echo "hardware capability guard tests passed"

@@ -164,10 +164,15 @@ hotspot_on() {
 }
 
 wait_for_hostapd() {
-  # Continue as soon as systemd reports the AP ready; a fixed one-second wait
-  # made every toggle feel slower even when hostapd started quickly.
+  # systemd can report the transient unit active before hostapd has finished
+  # initialization (or after it has already failed). Require the control
+  # interface to report ENABLED before starting dnsmasq.
   for _ in $(seq 1 20); do
-    systemctl is-active --quiet omarchy-hotspot 2>/dev/null && return 0
+    if systemctl is-active --quiet omarchy-hotspot 2>/dev/null \
+      && hostapd_cli -p /run/hostapd -i "$VIF" status 2>/dev/null \
+      | grep -qx 'state=ENABLED'; then
+      return 0
+    fi
     sleep 0.05
   done
   return 1
