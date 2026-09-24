@@ -8,11 +8,6 @@ current connection — while the station link stays up the entire time.
 
 Maintained by **[Wis-kal](https://github.com/chillboy0101)**.
 
-![Hotspot panel](preview.png)
-
-*The hotspot popup: hero toggle, scannable QR code, and live connection details.*
-
-
 ## Features
 
 - 🔥 **Concurrent STA+AP** — your existing Wi-Fi connection keeps working while clients join the hotspot. No radio juggling, no disconnects.
