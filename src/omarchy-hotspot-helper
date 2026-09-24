@@ -299,7 +299,6 @@ start_ap() {
   ensure_vif
   write_hostapd_conf
 
-  ip link set "$VIF" up
   systemctl stop omarchy-hotspot 2>/dev/null || true
   # Transient unit: keeps hostapd in foreground (no -B fork bugs), logs to
   # journald, and survives the pkexec session.
@@ -313,7 +312,6 @@ start_ap() {
     exit 1
   fi
   ip addr replace "$AP_GATEWAY/24" dev "$VIF" 2>/dev/null || true
-  ip link set "$VIF" up
 
   # Forward + NAT through the default route (any uplink, VLAN included).
   sysctl -q -w net.ipv4.ip_forward=1
