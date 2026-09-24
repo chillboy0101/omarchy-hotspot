@@ -50,12 +50,19 @@ The AP runs on a **virtual interface** (`ap0`) alongside your station interface:
 - A Wi-Fi card whose driver supports **concurrent station + AP** on separate
   virtual interfaces. Verify with:
   ```sh
-  iw list | grep -A3 "valid interface combinations"
-  # look for: #{ managed } <= 1, #{ AP, ... } <= 1
+  iw list
+  # look for a "valid interface combinations" entry containing both
+  # managed and AP
   ```
-  Intel AX200/AX210 (iwlwifi) work; the AP **must mirror the station's
-  channel and channel width** (the helper does this automatically — a width
-  mismatch makes iwlwifi silently refuse to beacon).
+  The helper checks this capability before creating `ap0` and refuses to
+  start if the driver does not advertise a managed+AP combination. In
+  particular, RTL8723DE adapters using the `rtw88_8723de` driver report
+  `interface combinations are not supported`; they cannot keep Wi-Fi
+  connected while hosting this hotspot and are not compatible with this
+  plugin. Do not use a fallback that disconnects the station connection.
+  Intel AX200/AX210 (iwlwifi) are examples of adapters that can support this
+  mode; the AP **must mirror the station's channel and channel width** (the
+  helper does this automatically).
 
 ## Installation
 
