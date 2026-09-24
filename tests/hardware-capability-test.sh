@@ -19,7 +19,7 @@ mac_guard_line="$(grep -n "if \[\[ \"\${current_ap_mac,,}\" != \"\${ap_mac,,}\" 
 mac_set_line="$(grep -n "if ! ip link set \"\$VIF\" address \"\$ap_mac\"" "$helper" | cut -d: -f1)"
 [[ "$mac_guard_line" -lt "$mac_set_line" ]]
 
-if grep -q 'ip link set "\$VIF" up' "$helper"; then
+if grep -q "ip link set \"\$VIF\" up" "$helper"; then
   echo "startup must let hostapd bring the AP interface up" >&2
   exit 1
 fi
