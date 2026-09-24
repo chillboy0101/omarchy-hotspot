@@ -8,7 +8,7 @@ current connection — while the station link stays up the entire time.
 
 Maintained by **[Wis-kal](https://github.com/chillboy0101)**.
 
-![Hotspot panel](docs/hotspot-panel.png)
+![Hotspot panel](preview.png)
 
 *The hotspot popup: hero toggle, scannable QR code, and live connection details.*
 
@@ -171,7 +171,6 @@ Thanks to everyone who has helped improve this project:
 | Contributor | Role |
 |---|---|
 | **[Wis-kal](https://github.com/chillboy0101)** — `@chillboy0101` | Owner and current maintainer |
-| **[Shivam Narkar](https://github.com/shivamnarkar47)** — `@shivamnarkar47` | Original implementation |
 | **[Muhammad Dicky Isra](https://github.com/DaDecky)** — `@DaDecky` | Contributor (scoped IPv6 resolver fix) |
 | **[JunaidIRF](https://github.com/JunaidIRF)** — `@JunaidIRF` | Contributor (inline SSID editor & popup overflow fix) |
 
