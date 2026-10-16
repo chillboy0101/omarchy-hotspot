@@ -16,6 +16,30 @@ describes the boundary used by the 1.0 release.
 - Root-sourced support code and the secure-state program must be regular,
   root-owned files that are not writable by group or other users.
 
+## Installation
+
+`install.sh` runs `src/install-payload.py`, which never lets root read the
+user-writable checkout:
+
+- Before elevation it opens each allowlisted file once through no-follow
+  descriptors, requires a bounded regular file, and verifies its SHA-256
+  against the committed `payload.sha256`. The manifest must list exactly the
+  installer's allowlist.
+- `pkexec` then authorizes a fixed `/usr/bin/python3 -I -S -c` bootstrap whose
+  argv carries the SHA-256 of the installer and of the manifest. The verified
+  installer and payload bytes arrive on stdin; the bootstrap refuses an
+  installer whose digest differs from argv, and the installer refuses a
+  manifest or file whose digest differs from the authorized manifest.
+- Root walks from `/` with `O_DIRECTORY | O_NOFOLLOW`, requires every
+  directory to be root-owned and not group/other writable, refuses to replace
+  non-regular files, and writes each file through an exclusive temporary file
+  with `fchown`, `fchmod`, `fsync`, atomic rename, and a directory sync.
+- The privileged stage clears the environment, sets `PATH=/nonexistent`
+  (pacman alone receives the fixed `PATH=/usr/bin`), and accepts only a plain
+  account name for the polkit subject.
+- CI pins `actions/checkout` to a full commit SHA and checks
+  `payload.sha256` against the tree.
+
 ## Process handling
 
 - QML never constructs `bash -c` strings. Commands and arguments remain
@@ -69,6 +93,7 @@ deadlines, and uses no telemetry or external lookup service.
 ## Verification
 
 `tests/security-hardening-test.sh` checks the executable boundary and runs
-unit tests for process timeouts/output caps plus no-follow atomic storage.
+unit tests for process timeouts/output caps, no-follow atomic storage, and the
+digest-verified installer handoff.
 GitHub Actions also runs ShellCheck, Bash/Python syntax checks, the security
 suite, manifest validation, and the plugin behavior tests.

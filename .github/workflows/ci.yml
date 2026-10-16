@@ -5,12 +5,19 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Security + syntax + manifest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      # Pinned to an immutable commit so every validation run executes the
+      # reviewed action revision.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
@@ -23,9 +30,12 @@ jobs:
         run: |
           bash -n src/omarchy-hotspot-helper src/device-identification.sh src/discover-device.sh src/lease-event.sh install.sh plugin/qr.sh tests/*.sh
 
+      - name: Verify installer payload digests
+        run: sha256sum --strict -c payload.sha256
+
       - name: Python syntax and security tests
         run: |
-          python3 -m py_compile plugin/run-bounded.py plugin/copy-secret.py src/secure-state.py tests/test_run_bounded.py tests/test_secure_state.py
+          python3 -m py_compile plugin/run-bounded.py plugin/copy-secret.py src/secure-state.py src/install-payload.py tests/test_run_bounded.py tests/test_secure_state.py tests/test_install_payload.py
           bash tests/security-hardening-test.sh
 
       - name: Plugin behavior tests

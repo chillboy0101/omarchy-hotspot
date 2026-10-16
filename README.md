@@ -82,12 +82,19 @@ cd omarchy-hotspot
 
 `install.sh` does:
 
-1. Installs `hostapd` + `dnsmasq` (pacman)
-2. Installs `src/omarchy-hotspot-helper` → `/usr/local/bin/`
-3. Installs the root-owned no-follow atomic state helper and device discovery hooks
-4. Migrates existing hotspot settings to root-owned `600` files without changing their values
-5. Installs the polkit rule (passwordless `pkexec` for the helper only)
-6. Tells NetworkManager to never touch `ap0` (it would force station mode)
+1. Verifies every installed file against the committed `payload.sha256`
+   before asking for your password, and refuses to continue on any mismatch,
+   symlink, or non-regular file
+2. Hands the verified bytes to the root stage over a pipe; the authorization
+   request carries the installer and manifest SHA-256, and root re-checks
+   both plus every file digest without reading from the checkout
+3. Installs `hostapd` + `dnsmasq` (pacman)
+4. Installs `src/omarchy-hotspot-helper` → `/usr/local/bin/` and the root-owned
+   no-follow atomic state helper and device discovery hooks → `/usr/local/lib/`,
+   each through exclusive temporary files and atomic renames
+5. Migrates existing hotspot settings to root-owned `600` files without changing their values
+6. Installs the polkit rule (passwordless `pkexec` for the helper only)
+7. Tells NetworkManager to never touch `ap0` (it would force station mode)
 
 ## Removal
 

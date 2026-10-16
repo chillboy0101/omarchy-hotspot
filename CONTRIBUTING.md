@@ -46,6 +46,18 @@ shellcheck src/omarchy-hotspot-helper
 bash -n src/omarchy-hotspot-helper
 ```
 
+## Installer payload digests
+
+`install.sh` refuses to run unless every installed file matches the committed
+`payload.sha256`. After changing the helper, any `src/` support script, the
+installer, or a file in `config/`, regenerate it and commit the result:
+
+```sh
+sha256sum config/50-omarchy-hotspot.rules config/99-unmanaged-ap0.conf \
+  src/device-identification.sh src/discover-device.sh src/install-payload.py \
+  src/lease-event.sh src/omarchy-hotspot-helper src/secure-state.py > payload.sha256
+```
+
 ## Code style
 
 ### Shell scripts (`src/omarchy-hotspot-helper`)
@@ -68,6 +80,7 @@ Run the automated checks before submitting changes:
 
 - `bash tests/device-identification-test.sh`
 - `bash tests/panel-behavior-test.sh`
+- `bash tests/security-hardening-test.sh` (includes the installer payload tests)
 - **Manually test** UI and networking changes on a real system
 - **Verify** `shellcheck` and `bash -n` pass
 - **Document** the testing steps in your PR description

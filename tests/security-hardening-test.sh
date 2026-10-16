@@ -13,6 +13,7 @@ qr="$repo_dir/plugin/qr.sh"
 [[ "$(head -n1 "$repo_dir/plugin/run-bounded.py")" == '#!/usr/bin/python3' ]]
 [[ "$(head -n1 "$repo_dir/plugin/copy-secret.py")" == '#!/usr/bin/python3' ]]
 [[ "$(head -n1 "$repo_dir/src/secure-state.py")" == '#!/usr/bin/python3' ]]
+[[ "$(head -n1 "$repo_dir/src/install-payload.py")" == '#!/usr/bin/python3' ]]
 
 grep -q 'run-bounded.py' "$panel"
 grep -q '"/usr/bin/pkexec"' "$panel"
@@ -28,6 +29,14 @@ if grep -q 'bash.*,.*-c' "$panel"; then
   echo "panel must not construct shell commands" >&2
   exit 1
 fi
+# The installer must not copy from the user-writable checkout as root.
+if grep -Eq '/usr/bin/(install|cp)[[:space:]]' "$installer"; then
+  echo "installer must hand verified bytes to root instead of copying checkout paths" >&2
+  exit 1
+fi
+grep -q 'install-payload.py' "$installer"
+(cd "$repo_dir" && /usr/bin/sha256sum --quiet --strict -c payload.sha256)
+
 if grep -q 'StdioCollector' "$panel"; then
   echo "panel process output must be streamed through bounded collectors" >&2
   exit 1
@@ -44,5 +53,6 @@ fi
 
 /usr/bin/python3 "$repo_dir/tests/test_secure_state.py"
 /usr/bin/python3 "$repo_dir/tests/test_run_bounded.py"
+/usr/bin/python3 "$repo_dir/tests/test_install_payload.py"
 
 echo "security hardening tests passed"
