@@ -34,9 +34,9 @@ dns_line="$(grep -n 'systemd-run --unit=omarchy-hotspot-dns' "$helper" | head -1
 # `iw dev <station> info` prints it, e.g. "9 (2452 MHz), width: 20 MHz, ...".
 hostapd_conf_for() {
   local link="$1"
+  # shellcheck disable=SC2034,SC2329 # The evaluated helper functions use these stubs.
   (
     eval "$(awk '/^(station_channel|station_width|station_center_offset|station_vht_center|ht40_in_block|vht_block_center|write_hostapd_conf)[(][)] [{]$/,/^}$/' "$helper")"
-    # shellcheck disable=SC2034 # Read by the evaluated write_hostapd_conf.
     VIF=ap0 BLOCKED_FILE=/dev/null
     station_iface() { echo wlo1; }
     iw() { printf '\tchannel %s\n' "$link"; }
