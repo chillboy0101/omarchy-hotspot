@@ -51,7 +51,12 @@ iw list | grep -A3 "valid interface combinations"
 ```
 
 The AP mirrors the station's channel and channel width automatically, which
-single-radio adapters require.
+single-radio adapters require. It stays off 5 GHz radar (DFS) channels,
+which an access point may use only after a radar check of a minute or more:
+when the station's block includes one, as every 160 MHz block does in many
+countries, the AP uses the widest narrower block around the same channel
+(usually 80 MHz). When the station's own channel is a DFS channel, the panel
+says so and the hotspot stays off; Wi-Fi stays connected.
 
 | Adapter | Driver | Status |
 |---|---|---|
@@ -176,6 +181,7 @@ Details are in [docs/SECURITY.md](docs/SECURITY.md).
 | Panel says the adapter cannot create a concurrent AP interface | Your driver does not advertise station + AP. Check `iw list` (see [Requirements](#requirements)). |
 | `Device or resource busy` in `journalctl -u omarchy-hotspot` | Same cause: the driver allows only one active interface. |
 | Phone cannot see the network | `journalctl -u omarchy-hotspot` should show `AP-ENABLED`. Make sure the station is connected so the AP can mirror its channel. |
+| Panel says Wi-Fi uses a radar (DFS) channel | The network you are connected to is on a DFS channel (for example 52-64 or 100-144). Connect to a 2.4 GHz network or a 5 GHz network on another channel, or set your router to one. |
 | Connects but no internet | `iptables -L INPUT -n` and `iptables -t nat -L POSTROUTING -n`. The helper inserts an `ap0` ACCEPT and a MASQUERADE rule. |
 | No IP address on the phone | `journalctl -u omarchy-hotspot-dns` should show DISCOVER → OFFER → ACK. |
 | Toggle does nothing or asks for a password | The polkit rule in `/etc/polkit-1/rules.d/50-omarchy-hotspot.rules` must name your user. Rerun `./install.sh`. |

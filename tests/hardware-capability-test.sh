@@ -30,16 +30,44 @@ wait_line="$(grep -n 'wait_for_hostapd' "$helper" | head -1 | cut -d: -f1)"
 dns_line="$(grep -n 'systemd-run --unit=omarchy-hotspot-dns' "$helper" | head -1 | cut -d: -f1)"
 [[ "$wait_line" -lt "$dns_line" ]]
 
+# `iw phy <phy> info` as iw 6.17 prints it for a 5 GHz radio, with the
+# channels in $radar marked for radar detection. The interface combination
+# line is there to show that "radar detect widths" is not a channel.
+phy_info() {
+  local channel flags
+  printf 'Wiphy phy0\n\tBand 2:\n\t\tFrequencies:\n'
+  for channel in $(seq 36 4 64) $(seq 100 4 144) $(seq 149 4 177); do
+    flags=""
+    if [[ " ${radar:-} " == *" $channel "* ]]; then
+      flags=" (radar detection)"
+      # Some regulatory domains also forbid initiating radiation there.
+      [[ "$channel" != 140 ]] || flags=" (no IR, radar detection)"
+    fi
+    printf '\t\t\t* %d.0 MHz [%d] (24.0 dBm)%s\n' $((5000 + channel * 5)) "$channel" "$flags"
+  done
+  printf '\tvalid interface combinations:\n'
+  printf '\t\t * #{ managed } <= 1, #{ AP } <= 1,\n'
+  printf '\t\t   total <= 2, #channels <= 1, radar detect widths: { 20 MHz (no HT), 20 MHz }\n'
+}
+
 # Render hostapd.conf with the helper's own functions for a station link as
 # `iw dev <station> info` prints it, e.g. "9 (2452 MHz), width: 20 MHz, ...".
+# Set $radar to the channels the station's radio marks for radar detection.
 hostapd_conf_for() {
   local link="$1"
   # shellcheck disable=SC2034,SC2329 # The evaluated helper functions use these stubs.
   (
-    eval "$(awk '/^(station_channel|station_width|station_center_offset|station_vht_center|ht40_in_block|vht_block_center|write_hostapd_conf)[(][)] [{]$/,/^}$/' "$helper")"
+    eval "$(awk '/^(station_channel|station_width|station_center_offset|station_vht_center|ht40_in_block|vht_block_center|radar_channels|block_has_radar|write_hostapd_conf)[(][)] [{]$/,/^}$/' "$helper")"
     VIF=ap0 BLOCKED_FILE=/dev/null
     station_iface() { echo wlo1; }
-    iw() { printf '\tchannel %s\n' "$link"; }
+    iw() {
+      if [[ "$1" == phy* ]]; then
+        [[ -z "${phy_unreadable:-}" ]] || return 1
+        phy_info
+      else
+        printf '\tchannel %s\n\twiphy 0\n' "$link"
+      fi
+    }
     ap_ssid() { echo test-ssid; }
     state_store() { if [[ "$1" == write-hostapd ]]; then cat; else echo test-pass; fi; }
     write_hostapd_conf
@@ -163,6 +191,71 @@ for width in 80 160; do
     expect_no_key "$link" vht_oper_centr_freq_seg1_idx
   done
 done
+
+# Radar (DFS) channels as GH (DFS-FCC) marks them: 52-64 and 100-144. Every
+# 160 MHz block there holds some. The AP keeps the station's primary and
+# narrows to the widest block around it without a radar channel, so it never
+# needs ieee80211h, a country_code (which hostapd sends to the kernel as a
+# regulatory hint) or a channel availability check.
+gh_radar="52 56 60 64 $(seq -s ' ' 100 4 144)"
+radar="$gh_radar" expect_conf '36 (5180 MHz), width: 160 MHz, center1: 5250 MHz' \
+  channel=36 ieee80211n=1 ieee80211ac=1 'ht_capab=[HT40+]' \
+  vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=42
+radar="$gh_radar" expect_conf '48 (5240 MHz), width: 160 MHz' \
+  channel=48 ieee80211ac=1 'ht_capab=[HT40-]' vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=42
+radar="$gh_radar" expect_conf '44 (5220 MHz), width: 160 MHz, center1: 5250 MHz' \
+  channel=44 ieee80211ac=1 'ht_capab=[HT40+]' vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=42
+# Blocks without a radar channel stay as they are.
+radar="$gh_radar" expect_conf '36 (5180 MHz), width: 80 MHz, center1: 5210 MHz' \
+  channel=36 ieee80211ac=1 'ht_capab=[HT40+]' vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=42
+radar="$gh_radar" expect_conf '161 (5805 MHz), width: 80 MHz, center1: 5775 MHz' \
+  channel=161 ieee80211ac=1 'ht_capab=[HT40-]' vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=155
+radar="$gh_radar" expect_conf '44 (5220 MHz), width: 40 MHz, center1: 5230 MHz' \
+  channel=44 'ht_capab=[HT40+]'
+for link in '36 (5180 MHz), width: 160 MHz, center1: 5250 MHz' \
+  '36 (5180 MHz), width: 80 MHz, center1: 5210 MHz' '149 (5745 MHz), width: 20 MHz'; do
+  radar="$gh_radar" expect_no_key "$link" ieee80211h ieee80211d country_code
+done
+# A radio whose channel flags cannot be read keeps the station's width, as
+# before the radar check existed.
+phy_unreadable=1 radar="$gh_radar" expect_conf '36 (5180 MHz), width: 160 MHz, center1: 5250 MHz' \
+  channel=36 ieee80211ac=1 'ht_capab=[HT40+]' vht_oper_chwidth=2 vht_oper_centr_freq_seg0_idx=50
+# Narrowing continues through 40 and 20 MHz when the radar channel is closer.
+radar=44 expect_conf '36 (5180 MHz), width: 80 MHz, center1: 5210 MHz' \
+  channel=36 ieee80211n=1 'ht_capab=[HT40+]'
+radar=44 expect_no_key '36 (5180 MHz), width: 80 MHz, center1: 5210 MHz' \
+  ieee80211ac vht_oper_chwidth vht_oper_centr_freq_seg0_idx
+radar=40 expect_conf '36 (5180 MHz), width: 80 MHz, center1: 5210 MHz' channel=36 'ht_capab=[HT20]'
+radar=40 expect_conf '36 (5180 MHz), width: 40 MHz, center1: 5190 MHz' channel=36 'ht_capab=[HT20]'
+radar=36 expect_conf '40 (5200 MHz), width: 40 MHz, center1: 5190 MHz' channel=40 'ht_capab=[HT20]'
+
+# A radar primary leaves nothing to narrow to. The helper must refuse before
+# writing hostapd.conf, with a reason that fits the panel's 120-character
+# error line.
+expect_dfs_refusal() {
+  local link="$1" conf message
+  if conf="$(radar="$gh_radar" hostapd_conf_for "$link" 2>/dev/null)" || [[ -n "$conf" ]]; then
+    echo "station '$link': hostapd.conf must not be written on a radar primary" >&2
+    exit 1
+  fi
+  message="$(radar="$gh_radar" hostapd_conf_for "$link" 2>&1 >/dev/null || true)"
+  if [[ "$message" != *"(DFS) channel ${link%% *},"* || ${#message} -gt 120 ]]; then
+    echo "station '$link': unclear refusal '$message'" >&2
+    exit 1
+  fi
+}
+expect_dfs_refusal '100 (5500 MHz), width: 20 MHz'
+expect_dfs_refusal '52 (5260 MHz), width: 80 MHz, center1: 5290 MHz'
+expect_dfs_refusal '64 (5320 MHz), width: 40 MHz, center1: 5310 MHz'
+expect_dfs_refusal '104 (5520 MHz), width: 160 MHz, center1: 5570 MHz'
+expect_dfs_refusal '140 (5700 MHz), width: 40 MHz'
+
+# start_ap renders hostapd.conf before it creates ap0, so a refusal leaves no
+# interface behind.
+start_ap_body="$(awk '/^start_ap[(][)] [{]$/,/^}$/' "$helper")"
+render_line="$(grep -n '^  write_hostapd_conf$' <<<"$start_ap_body" | cut -d: -f1)"
+vif_line="$(grep -n '^  ensure_vif$' <<<"$start_ap_body" | cut -d: -f1)"
+[[ -n "$render_line" && -n "$vif_line" && "$render_line" -lt "$vif_line" ]]
 
 # A 20 MHz station must not enable VHT.
 expect_no_key '9 (2452 MHz), width: 20 MHz, center1: 2452 MHz' ieee80211ac vht_oper_chwidth

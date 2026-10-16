@@ -186,6 +186,29 @@ vht_block_center() {
   done
 }
 
+# Channels the station's radio may use only after radar detection (DFS) in
+# the current regulatory domain. `iw phy` marks each one as
+# "* 5260.0 MHz [52] (24.0 dBm) (radar detection)". Prints nothing when the
+# radio cannot be queried, which leaves the AP exactly as wide as before.
+radar_channels() {
+  local iface phy
+  iface="$(station_iface)"
+  [ -n "$iface" ] || return 0
+  phy="$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/ { print $2; exit }')" || return 0
+  [ -n "$phy" ] || return 0
+  iw "phy#$phy" info 2>/dev/null | awk '/MHz \[[0-9]+\].*radar detection/ { if (match($0, /\[[0-9]+\]/)) print substr($0, RSTART + 1, RLENGTH - 2) }' || true
+}
+
+# True when the block of the given center and width (MHz) holds a channel
+# from the space-padded list of radar channels.
+block_has_radar() {
+  local center="$1" width="$2" radar="$3" freq
+  for ((freq = center - width / 2 + 10; freq < center + width / 2; freq += 20)); do
+    [[ "$radar" == *" $(((freq - 5000) / 5)) "* ]] && return 0
+  done
+  return 1
+}
+
 ap_ssid() {
   state_store read-ssid
 }
@@ -254,7 +277,7 @@ ensure_vif() {
 }
 
 write_hostapd_conf() {
-  local channel freq mode width ht seg0 chwidth
+  local channel freq mode width center="" radar ht seg0 chwidth
   channel="$(station_channel)"
   if [ -z "$channel" ]; then
     channel=1
@@ -275,25 +298,54 @@ write_hostapd_conf() {
   case "$width" in
     40)
       if [ "$(station_center_offset)" = "minus" ]; then
-        ht="[HT40-]"
+        center=$((freq - 10))
       else
-        ht="[HT40+]"
+        center=$((freq + 10))
       fi
       ;;
     80 | 160)
-      local vhtcenter
-      vhtcenter="$(station_vht_center)"
-      vhtcenter="${vhtcenter:-$(vht_block_center "$channel" "$width")}"
-      if [ -n "$vhtcenter" ]; then
-        # vht_oper_chwidth 1 is 80 MHz and 2 is 160 MHz. At 160 MHz seg0 is
-        # the 160 MHz center and seg1 stays unset: seg1 is only for 80+80,
-        # and hostapd 2.12 rejects it at 160 MHz.
-        chwidth=$((width / 80))
-        seg0=$(((vhtcenter - 5000) / 5))
-        ht="$(ht40_in_block "$freq" "$vhtcenter" "$width")"
-      else
-        ht="[HT20]"
-      fi
+      center="$(station_vht_center)"
+      center="${center:-$(vht_block_center "$channel" "$width")}"
+      ;;
+  esac
+  if [ -z "$center" ]; then
+    width=20
+    center=$freq
+  fi
+
+  # Radar (DFS) channels: hostapd disables them unless ieee80211h=1 and the
+  # driver detects radar, and then keeps the AP silent through a channel
+  # availability check of 60 s or more. cfg80211 waives that check only for
+  # a P2P GO, never an AP, and mac80211 refuses the station's scans while an
+  # AP occupies a radar channel. So the AP narrows to the widest block around
+  # the primary without one. That block lies inside the station's block with
+  # the same primary, so the shared radio can still combine the two. Nothing
+  # remains when the primary itself is a radar channel.
+  radar=" $(radar_channels | tr '\n' ' ') "
+  if [[ "$radar" == *" $channel "* ]]; then
+    echo "Wi-Fi uses radar (DFS) channel $channel, which the hotspot cannot share. Connect to a 2.4 GHz or non-DFS 5 GHz network." >&2
+    return 1
+  fi
+  while [ "$width" -gt 20 ] && block_has_radar "$center" "$width" "$radar"; do
+    width=$((width / 2))
+    if [ "$freq" -lt "$center" ]; then
+      center=$((center - width / 2))
+    else
+      center=$((center + width / 2))
+    fi
+  done
+
+  case "$width" in
+    80 | 160)
+      # vht_oper_chwidth 1 is 80 MHz and 2 is 160 MHz. At 160 MHz seg0 is
+      # the 160 MHz center and seg1 stays unset: seg1 is only for 80+80,
+      # and hostapd 2.12 rejects it at 160 MHz.
+      chwidth=$((width / 80))
+      seg0=$(((center - 5000) / 5))
+      ht="$(ht40_in_block "$freq" "$center" "$width")"
+      ;;
+    40)
+      ht="$(ht40_in_block "$freq" "$center" "$width")"
       ;;
     *)
       ht="[HT20]"
@@ -337,8 +389,10 @@ start_ap() {
   if vif_exists && ! hotspot_on; then
     iw dev "$VIF" del 2>/dev/null || true
   fi
-  ensure_vif
+  # Render first: a station channel the AP cannot share stops here, before
+  # ap0 exists.
   write_hostapd_conf
+  ensure_vif
 
   systemctl stop omarchy-hotspot 2>/dev/null || true
   # Transient unit: keeps hostapd in foreground (no -B fork bugs), logs to
