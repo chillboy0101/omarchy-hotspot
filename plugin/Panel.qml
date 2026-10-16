@@ -1202,21 +1202,22 @@ Panel {
                     wrapMode: Text.Wrap
                   }
 
-                  TextField {
+                  KeyField {
                     visible: deviceRow.editingAlias
                     width: parent.width
                     text: root.deviceAliasDraft
                     placeholderText: "Device name"
+                    maximumLength: 48
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.body
                     foreground: root.foreground
                     enabled: !root.deviceAliasBusy
-                    onTextChanged: if (visible && text !== root.deviceAliasDraft) {
-                      root.deviceAliasDraft = text
+                    onTextEdited: function(value) {
+                      root.deviceAliasDraft = value
                       root.deviceAliasError = ""
                     }
                     onAccepted: root.saveDeviceAlias()
-                    Keys.onEscapePressed: root.cancelDeviceAlias()
+                    onCancelled: root.cancelDeviceAlias()
                   }
 
                   RowLayout {
@@ -1431,21 +1432,22 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            TextField {
+            KeyField {
               id: hotspotNameField
               text: root.ssidDraft
               placeholderText: "Hotspot name"
+              maximumLength: 32
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
               foreground: root.foreground
               enabled: !root.ssidBusy && !root.passwordBusy
               width: parent.width
-              onTextChanged: if (visible && text !== root.ssidDraft) {
-                root.ssidDraft = text
+              onTextEdited: function(value) {
+                root.ssidDraft = value
                 root.ssidError = ""
               }
               onAccepted: hotspotPasswordField.forceActiveFocus()
-              Keys.onEscapePressed: root.cancelHotspotEdit()
+              onCancelled: root.cancelHotspotEdit()
             }
           }
 
@@ -1463,23 +1465,24 @@ Panel {
               width: parent.width
               implicitHeight: hotspotPasswordField.implicitHeight
 
-              TextField {
+              KeyField {
                 id: hotspotPasswordField
                 anchors.fill: parent
                 text: root.passwordDraft
                 placeholderText: "Leave blank to keep current"
-                echoMode: root.showEditPassword ? TextInput.Normal : TextInput.Password
+                password: !root.showEditPassword
+                maximumLength: 63
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
                 foreground: root.foreground
                 rightPadding: Style.spacing.controlPaddingX + editPasswordEye.width + Style.spacing.sm
                 enabled: !root.ssidBusy && !root.passwordBusy
-                onTextChanged: if (visible && text !== root.passwordDraft) {
-                  root.passwordDraft = text
+                onTextEdited: function(value) {
+                  root.passwordDraft = value
                   root.passwordError = ""
                 }
                 onAccepted: root.saveHotspotEdit()
-                Keys.onEscapePressed: root.cancelHotspotEdit()
+                onCancelled: root.cancelHotspotEdit()
               }
 
               PanelActionButton {

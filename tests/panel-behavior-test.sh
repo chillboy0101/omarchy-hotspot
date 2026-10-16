@@ -55,6 +55,35 @@ if grep -q 'wrapMode: Text.WrapAnywhere' "$panel"; then
   exit 1
 fi
 
+# Qt's TextInput reads the Wayland clipboard on its own, so editable fields
+# use the key-only KeyField instead of TextField/TextInput/TextEdit.
+key_field="$repo_dir/plugin/KeyField.qml"
+[[ -f "$key_field" ]]
+for qml in "$panel" "$key_field"; do
+  if grep -Eq '\b(TextField|TextInput|TextEdit)[[:space:]]*\{' "$qml"; then
+    echo "$(basename "$qml") must not instantiate Qt text inputs" >&2
+    exit 1
+  fi
+done
+if grep -Eq '\b(TextField|TextInput)\b' "$panel"; then
+  echo "Panel.qml must not reference TextField or TextInput" >&2
+  exit 1
+fi
+if grep -Eq 'createQmlObject|createComponent|Loader' "$key_field"; then
+  echo "KeyField.qml must not create items dynamically" >&2
+  exit 1
+fi
+[[ "$(grep -c '^[[:space:]]*KeyField {' "$panel")" -eq 3 ]]
+grep -q 'id: hotspotNameField' "$panel"
+grep -q 'password: !root.showEditPassword' "$panel"
+grep -q 'onTextEdited: function(value)' "$panel"
+grep -q 'onCancelled: root.cancelHotspotEdit()' "$panel"
+grep -q 'onCancelled: root.cancelDeviceAlias()' "$panel"
+grep -q '^FocusScope {' "$key_field"
+grep -q 'signal textEdited(string value)' "$key_field"
+grep -q 'Qt.Key_Backspace' "$key_field"
+grep -q '0xdc00' "$key_field"
+
 # WPA passphrases may start or end with spaces; reading one must keep them.
 grep -q 'var password = String(stdoutText || "").replace(/\\r?\\n$/, "")' "$panel"
 if grep -q 'var password = String(stdoutText || "").trim()' "$panel"; then
