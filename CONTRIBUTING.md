@@ -100,6 +100,6 @@ Thanks to everyone who has helped improve this project:
 
 | Contributor | Role |
 |---|---|
-| **[Wis-kal](https://github.com/chillboy0101)** — `@chillboy0101` | Owner and current maintainer |
+| **[Carl Quist](https://github.com/chillboy0101)** — `@chillboy0101` | Owner and current maintainer |
 | **[Muhammad Dicky Isra](https://github.com/DaDecky)** — `@DaDecky` | Contributor (scoped IPv6 resolver fix) |
 | **[JunaidIRF](https://github.com/JunaidIRF)** — `@JunaidIRF` | Contributor (inline SSID editor & popup overflow fix) |

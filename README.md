@@ -10,9 +10,11 @@
 </p>
 
 <p align="center">
-  <img alt="Version 1.0.0" src="https://img.shields.io/badge/version-1.0.0-e1e18f">
+  <a href="https://plugins.omarchy.org/plugin.html?id=io.github.chillboy0101.omarchy-hotspot"><img alt="Listed on Omarchy Plugins" src="https://img.shields.io/badge/Omarchy%20Plugins-listed-ffaca0"></a>
+  <img alt="Version 1.1.0" src="https://img.shields.io/badge/version-1.1.0-e1e18f">
   <img alt="Omarchy shell plugin" src="https://img.shields.io/badge/Omarchy-shell%20plugin-8b5cf6">
   <img alt="Platform: Arch Linux" src="https://img.shields.io/badge/platform-Arch%20Linux-1793d1">
+  <img alt="Wi-Fi: 802.11n/ac" src="https://img.shields.io/badge/Wi--Fi-802.11n%2Fac-e1e18f">
   <img alt="Security: WPA2-PSK" src="https://img.shields.io/badge/security-WPA2--PSK-ffaca0">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2ea44f">
 </p>
@@ -63,6 +65,7 @@ managing clients) happens entirely from the bar, without password prompts.
 | Capability | Description |
 |---|---|
 | Concurrent operation | Hosts the access point and keeps the existing Wi-Fi connection active on the same adapter. |
+| Modern Wi-Fi | Advertises 802.11n (HT) and, on 5 GHz, 802.11ac (VHT) at the station's channel width. |
 | Automatic channel alignment | Mirrors the station's channel and channel width, which single-radio adapters require. |
 | Any uplink | Network address translation follows the default route: Wi-Fi, Ethernet, USB tethering, or VLAN. |
 | QR onboarding | Displays a standard `WIFI:` QR code that phone cameras join directly. |
@@ -136,6 +139,7 @@ connection is never interrupted.
 
 ## Installation
 
+Omarchy Hotspot is listed in the [Omarchy plugin marketplace](https://plugins.omarchy.org/plugin.html?id=io.github.chillboy0101.omarchy-hotspot).
 Installation has two parts: the bar widget and the system helper.
 
 ### Step 1. Add the bar widget
@@ -268,6 +272,9 @@ The access point subnet is `10.42.0.0/24` with gateway `10.42.0.1`.
   allowlist.
 - Privileged state is stored in root-owned `0700`/`0600` locations and written
   through no-follow directory descriptors with locking and atomic replacement.
+- Network data such as SSIDs and client names is treated as untrusted text: the
+  helper reads radio parameters only from fixed `iw` fields and accepts digits
+  only.
 - Secrets are passed over bounded standard input, never on the command line.
   The panel never constructs shell commands, and every child process runs with
   a deadline and an output limit.
@@ -353,7 +360,7 @@ docs/                      Security model and images
 
 | Contributor | Contribution |
 |---|---|
-| [Wis-kal](https://github.com/chillboy0101) (`@chillboy0101`) | Owner and maintainer |
+| [Carl Quist](https://github.com/chillboy0101) (`@chillboy0101`) | Owner and maintainer |
 | [Muhammad Dicky Isra](https://github.com/DaDecky) (`@DaDecky`) | Scoped IPv6 resolver fix |
 | [JunaidIRF](https://github.com/JunaidIRF) (`@JunaidIRF`) | Inline SSID editor and popup overflow fix |
 
@@ -373,4 +380,4 @@ by Basecamp or the Omarchy project.
 
 ## License
 
-Released under the [MIT License](LICENSE). Copyright © 2026 Wis-kal.
+Released under the [MIT License](LICENSE). Copyright © 2026 Carl Quist.
