@@ -102,11 +102,23 @@ station_iface() {
   nmcli -t -f DEVICE,TYPE device status 2>/dev/null | grep -E ':wifi$' | head -1 | cut -d: -f1
 }
 
+# Match the field exactly: iw prints any "ssid" line first, and an SSID may
+# contain "channel".
 station_channel() {
   local iface
   iface="$(station_iface)"
   [ -n "$iface" ] || return 0
-  iw dev "$iface" info 2>/dev/null | awk '/channel/ { print $2; exit }'
+  iw dev "$iface" info 2>/dev/null | awk '$1 == "channel" { print $2; exit }'
+}
+
+# Primary frequency (MHz) of the station, from the same line:
+# "channel 37 (6135 MHz)". 6 GHz reuses the 2.4 and 5 GHz channel numbers,
+# so the channel number alone does not give the band.
+station_freq() {
+  local iface
+  iface="$(station_iface)"
+  [ -n "$iface" ] || return 0
+  iw dev "$iface" info 2>/dev/null | awk '$1 == "channel" { sub(/^[(]/, "", $3); print int($3); exit }'
 }
 
 # Channel width the station uses ("20", "40", "80", "160"). iw prints one
@@ -120,17 +132,13 @@ station_width() {
 
 # "plus" | "minus" | "" — secondary channel direction from center frequency.
 station_center_offset() {
-  local iface ch primary center
+  local iface primary center
   iface="$(station_iface)"
   [ -n "$iface" ] || return 0
-  ch="$(station_channel)"
+  primary="$(station_freq)"
   center="$(iw dev "$iface" info 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "center1:") { print $(i + 1); exit } }')"
+  [ -n "$primary" ] || return 0
   [ -n "$center" ] || return 0
-  if [ "$ch" -le 14 ]; then
-    primary=$((2412 + (ch - 1) * 5))
-  else
-    primary=$((5000 + ch * 5))
-  fi
   if [ "$center" -gt "$primary" ]; then
     echo "plus"
   elif [ "$center" -lt "$primary" ]; then
@@ -295,16 +303,21 @@ ensure_vif() {
 write_hostapd_conf() {
   local channel freq mode width center="" states ht seg0 chwidth
   channel="$(station_channel)"
-  if [ -z "$channel" ]; then
+  freq="$(station_freq)"
+  if [ -z "$channel" ] || [ -z "$freq" ]; then
     channel=1
+    freq=2412
   fi
-  if [ "$channel" -le 14 ]; then
+  # A 6 GHz AP needs SAE and op_class in hostapd 2.12, and this hotspot
+  # serves WPA2-PSK, so a 6 GHz station has no channel the AP can share.
+  if [ "$freq" -ge 5925 ]; then
+    echo "Wi-Fi uses 6 GHz channel $channel, which this hotspot cannot share. Connect to a 2.4 or 5 GHz network." >&2
+    return 1
+  fi
+  if [ "$freq" -lt 3000 ]; then
     mode="g"
-    freq=$((2412 + (channel - 1) * 5))
-    [ "$channel" -ne 14 ] || freq=2484
   else
     mode="a"
-    freq=$((5000 + channel * 5))
   fi
 
   # Mirror the station's width AND phy-context center (center1) so the

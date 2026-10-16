@@ -83,7 +83,7 @@ hostapd_conf_for() {
   local link="$1"
   # shellcheck disable=SC2034,SC2329 # The evaluated helper functions use these stubs.
   (
-    eval "$(awk '/^(station_channel|station_width|station_center_offset|station_vht_center|ht40_in_block|vht_block_center|channel_states|block_usable|write_hostapd_conf)[(][)] [{]$/,/^}$/' "$helper")"
+    eval "$(awk '/^(station_channel|station_freq|station_width|station_center_offset|station_vht_center|ht40_in_block|vht_block_center|channel_states|block_usable|write_hostapd_conf)[(][)] [{]$/,/^}$/' "$helper")"
     VIF=ap0 BLOCKED_FILE=/dev/null
     station_iface() { echo wlo1; }
     iw() {
@@ -91,8 +91,9 @@ hostapd_conf_for() {
         [[ "$1" == 'phy#0' && -z "${phy_unreadable:-}" ]] || return 1
         phy_info
       else
-        # iw prints the SSID, when the kernel reports one, before wiphy.
-        printf '\tssid my wiphy 5\n\ttype managed\n\twiphy 0\n\tchannel %s\n' "$link"
+        # iw prints the SSID, when the kernel reports one, before wiphy and
+        # channel.
+        printf '\tssid my wiphy channel 5\n\ttype managed\n\twiphy 0\n\tchannel %s\n' "$link"
       fi
     }
     ap_ssid() { echo test-ssid; }
@@ -324,6 +325,21 @@ expect_dfs_refusal '64 (5320 MHz), width: 40 MHz, center1: 5310 MHz'
 expect_dfs_refusal '104 (5520 MHz), width: 160 MHz, center1: 5570 MHz'
 # Channel 140 is no IR as well as radar; the radar reason names the fix.
 expect_dfs_refusal '140 (5700 MHz), width: 40 MHz'
+# 6 GHz reuses the 2.4 and 5 GHz channel numbers, so the band comes from the
+# frequency iw prints. hostapd 2.12 needs SAE and op_class for a 6 GHz AP,
+# and the hotspot serves WPA2-PSK, so it refuses any 6 GHz station, usable
+# channel or not. 6 GHz [5] must not pass as 2.4 GHz ch5 (hw_mode=g), nor
+# [37] and [149] as 5 GHz ch37 and ch149 (hw_mode=a).
+expect_refusal '37 (6135 MHz), width: 160 MHz, center1: 6185 MHz' \
+  'Wi-Fi uses 6 GHz channel 37, which this hotspot cannot share. Connect to a 2.4 or 5 GHz network.'
+expect_refusal '5 (5975 MHz), width: 20 MHz' 'Wi-Fi uses 6 GHz channel 5,'
+expect_refusal '149 (6695 MHz), width: 80 MHz, center1: 6705 MHz' 'Wi-Fi uses 6 GHz channel 149,'
+# Channel 2 (5935 MHz) is the lowest 6 GHz channel, below [1] at 5955 MHz.
+expect_refusal '2 (5935 MHz), width: 20 MHz' 'Wi-Fi uses 6 GHz channel 2,'
+phy_unreadable=1 expect_refusal '37 (6135 MHz), width: 160 MHz, center1: 6185 MHz' \
+  'Wi-Fi uses 6 GHz channel 37,'
+# The highest 5 GHz channel stays 5 GHz.
+expect_conf '177 (5885 MHz), width: 20 MHz' hw_mode=a channel=177 'ht_capab=[HT20]'
 
 # start_ap renders hostapd.conf before it creates ap0, so a refusal leaves no
 # interface behind.

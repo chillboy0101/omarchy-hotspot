@@ -58,7 +58,8 @@ of a minute or more first, and channels that `iw phy` marks disabled or
 every 160 MHz block does in many countries, the AP uses the widest narrower
 block around the same channel (usually 80 MHz). When the station's own
 channel is one, the panel says so and the hotspot stays off; Wi-Fi stays
-connected.
+connected. The same happens on a 6 GHz network: a 6 GHz access point must
+use WPA3 (SAE), and the hotspot uses WPA2.
 
 | Adapter | Driver | Status |
 |---|---|---|
@@ -185,6 +186,7 @@ Details are in [docs/SECURITY.md](docs/SECURITY.md).
 | Phone cannot see the network | `journalctl -u omarchy-hotspot` should show `AP-ENABLED`. Make sure the station is connected so the AP can mirror its channel. |
 | Panel says Wi-Fi uses a radar (DFS) channel | The network you are connected to is on a DFS channel (for example 52-64 or 100-144). Connect to a 2.4 GHz network or a 5 GHz network on another channel, or set your router to one. |
 | Panel says regulatory rules forbid starting an access point (no IR), or that the radio cannot use the channel | Your regulatory domain lets this radio join a network on that channel but not host one there. If `iw reg get` shows `country 00`, every 5 GHz channel is no IR: set your country in `/etc/conf.d/wireless-regdom`. Otherwise connect to a network on another channel. |
+| Panel says Wi-Fi uses a 6 GHz channel | A 6 GHz access point must use WPA3 (SAE), and the hotspot uses WPA2. Connect to a 2.4 or 5 GHz network, such as the same router's 2.4 or 5 GHz band. |
 | Connects but no internet | `iptables -L INPUT -n` and `iptables -t nat -L POSTROUTING -n`. The helper inserts an `ap0` ACCEPT and a MASQUERADE rule. |
 | No IP address on the phone | `journalctl -u omarchy-hotspot-dns` should show DISCOVER → OFFER → ACK. |
 | Toggle does nothing or asks for a password | The polkit rule in `/etc/polkit-1/rules.d/50-omarchy-hotspot.rules` must name your user. Rerun `./install.sh`. |
