@@ -1,89 +1,132 @@
 <p align="center">
-  <img src="preview.png" alt="Omarchy Hotspot panel open from the Omarchy bar" width="100%">
+  <img src="preview.png" alt="Omarchy Hotspot panel opened from the Omarchy bar" width="100%">
 </p>
 
 <h1 align="center">Omarchy Hotspot</h1>
 
 <p align="center">
-  <strong>Share your connection. Keep your Wi-Fi.</strong><br>
-  A one-click Wi-Fi hotspot for the Omarchy bar that never drops your current network.
+  Concurrent Wi-Fi hotspot for the Omarchy desktop.<br>
+  Share your connection without disconnecting from it.
 </p>
 
 <p align="center">
+  <img alt="Version 1.0.0" src="https://img.shields.io/badge/version-1.0.0-e1e18f">
   <img alt="Omarchy shell plugin" src="https://img.shields.io/badge/Omarchy-shell%20plugin-8b5cf6">
-  <img alt="Bar widget" src="https://img.shields.io/badge/kind-bar%20widget-e1e18f">
-  <img alt="WPA2" src="https://img.shields.io/badge/security-WPA2-ffaca0">
-  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-green">
+  <img alt="Platform: Arch Linux" src="https://img.shields.io/badge/platform-Arch%20Linux-1793d1">
+  <img alt="Security: WPA2-PSK" src="https://img.shields.io/badge/security-WPA2--PSK-ffaca0">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2ea44f">
+</p>
+
+<p align="center">
+  <a href="#installation">Installation</a> &nbsp;·&nbsp;
+  <a href="#usage">Usage</a> &nbsp;·&nbsp;
+  <a href="#security">Security</a> &nbsp;·&nbsp;
+  <a href="#troubleshooting">Troubleshooting</a> &nbsp;·&nbsp;
+  <a href="#support">Support</a>
 </p>
 
 ---
 
-Omarchy Hotspot turns your laptop into a WPA2 access point named
-`OmarchyHotspot` while it stays connected to the network it is already on.
-Phones and tablets join with a QR code, and everything (status, password,
-connected devices) lives in a native-style panel in your bar.
+## Table of contents
 
-## Highlights
+- [Overview](#overview)
+- [Key capabilities](#key-capabilities)
+- [Screenshots](#screenshots)
+- [System requirements](#system-requirements)
+- [Hardware compatibility](#hardware-compatibility)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [Security](#security)
+- [Operations](#operations)
+- [Troubleshooting](#troubleshooting)
+- [Uninstallation](#uninstallation)
+- [Support](#support)
+- [Contributing](#contributing)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
 
-| | |
+## Overview
+
+Omarchy Hotspot turns an Omarchy laptop into a WPA2-protected Wi-Fi access
+point while the laptop stays connected to its current network. The access point
+runs on a virtual interface (`ap0`) alongside the existing station interface, so
+the upstream connection is never dropped while clients are being served.
+
+The plugin is delivered as an Omarchy bar widget
+(`io.github.chillboy0101.omarchy-hotspot`) backed by a small, root-owned system
+helper. Day-to-day operation (starting, stopping, sharing credentials, and
+managing clients) happens entirely from the bar, without password prompts.
+
+## Key capabilities
+
+| Capability | Description |
 |---|---|
-| **Wi-Fi stays up** | The hotspot runs on a virtual `ap0` interface next to your station interface. No disconnects, no radio juggling. |
-| **Scan to join** | A scannable `WIFI:` QR code in the panel. Point any phone camera at it. |
-| **One panel for everything** | Hero toggle, live uplink/channel/client status, reveal/copy password, edit name and password, keyboard navigation (`j`/`k`, `Enter`, `Esc`). |
-| **Native bar controls** | Left click opens the panel, right click toggles the hotspot, middle click refreshes. |
-| **Knows your devices** | Names clients from DHCP, mDNS, NetBIOS, and hardware vendor data, with a local rename fallback for unknown devices. |
-| **Device control** | Disconnect a client once, block it persistently, or unblock it later. |
-| **Shares any uplink** | NAT follows the default route: Wi-Fi, Ethernet, phone tether, or VLAN. |
-| **No password prompts in daily use** | A narrowly scoped polkit rule lets the panel drive one root-owned helper without prompting. |
+| Concurrent operation | Hosts the access point and keeps the existing Wi-Fi connection active on the same adapter. |
+| Automatic channel alignment | Mirrors the station's channel and channel width, which single-radio adapters require. |
+| Any uplink | Network address translation follows the default route: Wi-Fi, Ethernet, USB tethering, or VLAN. |
+| QR onboarding | Displays a standard `WIFI:` QR code that phone cameras join directly. |
+| Credential management | Reveal (auto-hides), copy, and change the network name and passphrase from the panel. |
+| Client visibility | Lists connected clients with name, MAC/IP, signal, and session time, using DHCP, mDNS, NetBIOS, and vendor data. |
+| Client control | Disconnect a client once, block it persistently, or unblock it later. |
+| Native integration | Omarchy-style panel with mouse and keyboard controls and theme-aware styling. |
+| Hardened privilege boundary | Narrow polkit rule, closed helper command set, atomic root-owned state, and a digest-verified installer. |
 
-## Requirements
+## Screenshots
 
-- **Omarchy** (or Hyprland + Quickshell with the Omarchy shell)
-- `iw`, `nmcli`, `qrencode`, `python3`, `wl-copy` (wl-clipboard)
-- `hostapd` and `dnsmasq` (`install.sh` installs these with pacman)
-- A Wi-Fi adapter whose driver supports **concurrent station + AP** interfaces
+<p align="center">
+  <img src="docs/images/panel.png" alt="Hotspot panel with the access point active" width="380"><br>
+  <sub>Hotspot panel opened from the Omarchy bar with the access point active.</sub>
+</p>
 
-Check your adapter:
+## System requirements
+
+| Component | Requirement |
+|---|---|
+| Operating system | Omarchy (Arch Linux, Hyprland, and the Omarchy shell) |
+| Installed by the installer | `hostapd`, `dnsmasq` |
+| Provided by Omarchy | NetworkManager (`nmcli`), `iw`, `iptables`, `polkit`, `qrencode`, `python3`, `wl-clipboard` |
+| Privileges | One administrator authentication during installation |
+| Wi-Fi hardware | A driver that supports concurrent station (managed) and AP interfaces |
+
+Confirm adapter support before installing:
 
 ```sh
 iw list | grep -A3 "valid interface combinations"
-# you need an entry that allows both "managed" and "AP"
+# Look for an entry that allows both "managed" and "AP".
 ```
 
-The AP mirrors the station's channel and channel width automatically, which
-single-radio adapters require.
+## Hardware compatibility
 
 | Adapter | Driver | Status |
 |---|---|---|
-| Intel AX200 / AX210 | `iwlwifi` | Supports station + AP concurrency |
+| Intel AX200 / AX210 | `iwlwifi` | Supported: station + AP concurrency |
 | Realtek RTL8822CE | `rtw88_8822ce` | Driver advertises station + AP |
-| Realtek RTL8723DE | `rtw88_8723de` | Not with the stock driver; see note below |
+| Realtek RTL8723DE | `rtw88_8723de` | Not supported by the stock driver (see note) |
 
-> **RTL8723DE note.** The in-kernel `rtw88` driver advertises station + AP
-> concurrency only for RTL8822C, so on RTL8723DE `iw list` shows no
-> combinations and hostapd fails with `Device or resource busy`. Enabling the
-> same single-channel combination for RTL8723D in `rtw88` (a one-line driver
-> change built as a local module override) has been verified to keep Wi-Fi
-> connected while hosting this hotspot on kernel 7.2.5. This plugin does not
-> install or modify kernel drivers.
+> **Note:** The in-kernel `rtw88` driver advertises station + AP concurrency only for
+> RTL8822C. On RTL8723DE, `iw list` shows no interface combinations and hostapd
+> fails with `Device or resource busy`. Enabling the same single-channel
+> combination for RTL8723D in `rtw88` (a one-line driver change built as a local
+> module override) has been verified to keep Wi-Fi connected while hosting this
+> hotspot on kernel 7.2.5. This plugin does not install or modify kernel drivers.
 
-When an adapter cannot create the concurrent AP interface, the panel shows the
-driver and PHY that refused it. It never falls back to a mode that disconnects
-your Wi-Fi.
+When an adapter cannot create the concurrent interface, the panel reports the
+driver and PHY that refused it. The plugin never falls back to a mode that
+disconnects the station.
 
 ## Installation
 
-The repository root is the Omarchy plugin (`manifest.json` at the root). Setup
-takes two steps.
+Installation has two parts: the bar widget and the system helper.
 
-**1. Add the bar widget**
+### Step 1. Add the bar widget
 
 ```sh
 omarchy plugin add https://github.com/chillboy0101/omarchy-hotspot --yes
 omarchy plugin enable io.github.chillboy0101.omarchy-hotspot --section right
 ```
 
-**2. Install the system helper** (asks for your password once)
+### Step 2. Install the system helper
 
 ```sh
 git clone https://github.com/chillboy0101/omarchy-hotspot.git
@@ -91,100 +134,162 @@ cd omarchy-hotspot
 ./install.sh
 ```
 
-`install.sh`:
+You are asked for your password once.
 
-1. Verifies every installed file against the committed `payload.sha256`
-   *before* asking for your password, and stops on any mismatch, symlink, or
-   non-regular file
-2. Hands the verified bytes to the root stage over a pipe. The authorization
-   request carries the installer and manifest SHA-256, and root re-checks both
-   plus every file digest without reading from the checkout
-3. Installs `hostapd` and `dnsmasq` (pacman)
-4. Installs the helper to `/usr/local/bin/` and its root-owned support files to
-   `/usr/local/lib/`, each through an exclusive temporary file and atomic rename
-5. Migrates existing hotspot settings to root-owned `600` files without
-   changing their values
-6. Installs the polkit rule (passwordless `pkexec` for the helper only, for
-   your user only)
-7. Tells NetworkManager to leave `ap0` alone
+### Changes made by the installer
+
+| Path | Purpose | Owner / mode |
+|---|---|---|
+| `/usr/local/bin/omarchy-hotspot-helper` | Privileged helper invoked by the panel | `root` / `0755` |
+| `/usr/local/lib/omarchy-hotspot-secure-state` | No-follow, atomic state storage | `root` / `0755` |
+| `/usr/local/lib/omarchy-hotspot-device-identification.sh` | Client name resolution | `root` / `0644` |
+| `/usr/local/lib/omarchy-hotspot-lease-event.sh` | DHCP lease hook | `root` / `0755` |
+| `/usr/local/lib/omarchy-hotspot-discover-device.sh` | Background client discovery | `root` / `0755` |
+| `/etc/polkit-1/rules.d/50-omarchy-hotspot.rules` | Passwordless `pkexec` for the helper, installing user only | `root` / `0644` |
+| `/etc/NetworkManager/conf.d/99-unmanaged-ap0.conf` | Keeps NetworkManager off `ap0` | `root` / `0644` |
+| `/var/lib/omarchy-hotspot/` | Network name, passphrase, client names, block list | `root` / `0700`, files `0600` |
+
+The installer also installs `hostapd` and `dnsmasq` with `pacman --needed`.
+Existing settings are migrated without changing their values.
+
+### Installer integrity
+
+1. Before requesting privileges, every file to be installed is read once
+   through no-follow descriptors and checked against the committed
+   `payload.sha256`. Any mismatch, symlink, or non-regular file stops the
+   installation.
+2. The authorization request carries the SHA-256 of the installer and of the
+   manifest. The verified bytes are passed to the privileged stage over a pipe;
+   root never reads from the user-writable checkout.
+3. The privileged stage re-verifies every digest, then writes each file through
+   root-owned directory descriptors using an exclusive temporary file,
+   `fsync`, and an atomic rename.
+
+### Verify the installation
+
+```sh
+omarchy plugin list | grep omarchy-hotspot
+pkexec /usr/local/bin/omarchy-hotspot-helper status
+# Expected: "off<TAB>OmarchyHotspot", with no password prompt.
+```
 
 ## Usage
 
-1. Click the hotspot icon in the bar to open the panel (or right-click to
-   toggle straight away).
-2. Flip the switch (or press `Enter`). The panel shows the uplink, channel,
-   and connected clients.
-3. Join from a phone by scanning the QR code, or manually:
-   - **Network:** `OmarchyHotspot` (editable)
-   - **Password:** reveal it (it hides again after a few seconds) or copy it
-     from the panel
-4. Toggle off when you are done. Your Wi-Fi connection was never interrupted.
+### Controls
 
-**Editing.** The pencil opens one form for the hotspot name and an optional new
-password. Leaving the password blank keeps the current one. Passwords must be
-8–63 printable ASCII characters.
+| Action | Mouse (bar icon) | Keyboard (panel open) |
+|---|---|---|
+| Open or close the panel | Left click | `Esc` closes |
+| Start or stop the hotspot | Right click | `Enter` on the switch |
+| Refresh status and clients | Middle click | — |
+| Move between items | — | `j` / `k` or arrow keys |
+| Activate the selected item | — | `Enter` |
 
-**Devices.** Connected devices show their best local name with MAC/IP, signal,
-and connection time. **Rename** appears only when discovery returns
-*Unknown device* or a generic vendor label. **Disconnect** removes a device
-once (it can rejoin because it knows the password). **Block** disconnects it and
-keeps it out across hotspot restarts, and **Unblock** under *Blocked devices*
-lets it back in. Phones may hide their Settings name or use a private MAC, so
-automatic model detection is best-effort.
+### Connect a device
 
-## How it works
+1. Start the hotspot from the bar or the panel switch.
+2. Scan the QR code shown in the panel, or join manually:
+   - **Network:** `OmarchyHotspot` (configurable)
+   - **Passphrase:** reveal or copy it from the panel. A revealed passphrase
+     hides again after a few seconds.
+3. Stop the hotspot when finished. The laptop's own connection remains active
+   throughout.
+
+### Change the network name or passphrase
+
+Select the edit control to open a single form for the network name and an
+optional new passphrase. Leave the passphrase empty to keep the current one.
+Passphrases must be 8–63 printable ASCII characters. Connected clients
+reconnect with the new credentials after the access point restarts.
+
+### Manage connected devices
+
+Each client shows its best available local name with MAC/IP, signal strength,
+and connection time. A rename option appears only for clients reported as
+*Unknown device* or with a generic vendor label.
+
+- **Disconnect** removes a client once. It can rejoin with the passphrase.
+- **Block** disconnects a client and keeps it out across restarts.
+- **Unblock**, under *Blocked devices*, restores access.
+
+Phones may withhold their device name or use a randomized MAC address, so
+automatic identification is best-effort.
+
+## Architecture
 
 ```
- phone ── WPA2 ──▶ ap0 (hostapd + dnsmasq) ──NAT──▶ default route ──▶ internet
-                    │                                     ▲
-                    └──────── same radio, same channel ───┘
-                               wlo1 / wlp… (your Wi-Fi, stays up)
+  Client device                Omarchy laptop
+ ┌──────────────┐    WPA2     ┌───────────────────────────────────────────┐
+ │ phone/tablet │ ──────────▶ │ ap0       hostapd  (omarchy-hotspot)      │
+ └──────────────┘             │           dnsmasq  (omarchy-hotspot-dns)  │
+                              │              │ NAT (iptables)             │
+                              │              ▼                            │
+                              │ default route ──▶ upstream network        │
+                              │ wlo1 / wlp…   station link, stays up      │
+                              └───────────────────────────────────────────┘
 ```
 
-- **hostapd** serves the AP on `ap0` as a transient systemd unit
-  (`omarchy-hotspot.service`) with journald logging.
-- **dnsmasq** hands out `10.42.0.10–200` and resolves DNS
-  (`omarchy-hotspot-dns.service`).
-- **iptables** provides NAT and forwarding, plus an explicit INPUT accept on
-  `ap0`, since UFW's default DROP policy would otherwise block client DHCP/DNS.
-- The bar widget (`io.github.chillboy0101.omarchy-hotspot`) polls the helper
-  through `pkexec` and renders the QR matrix in the same format as
-  `omarchy.wifiqr`.
+| Component | Role |
+|---|---|
+| Bar widget (`plugin/Panel.qml`) | User interface. Calls the helper through `pkexec` via a bounded process runner. |
+| System helper (`omarchy-hotspot-helper`) | Root-side control with a closed command set: `status`, `read-password`, `clients`, `blocked`, `toggle`, `set-password`, `set-ssid`, `set-device-alias`, `disconnect-device`, `block-device`, `unblock-device`. |
+| hostapd | Access point on `ap0`, run as the transient unit `omarchy-hotspot.service`. |
+| dnsmasq | DHCP (`10.42.0.10`–`10.42.0.200`) and DNS for clients, run as `omarchy-hotspot-dns.service`. |
+| iptables | NAT, forwarding, and an explicit `ap0` input rule so a default-deny firewall does not block client DHCP/DNS. |
+| Secure state (`secure-state.py`) | Root-owned, locked, atomic storage for settings and client records. |
+
+The access point subnet is `10.42.0.0/24` with gateway `10.42.0.1`.
 
 ## Security
 
-The helper crosses a passwordless privilege boundary, so it is deliberately
-small and strict:
-
-- Polkit authorizes only `/usr/local/bin/omarchy-hotspot-helper`, only for the
-  user who ran the installer, and the helper exposes a closed subcommand list.
-- The helper clears its environment, sets `PATH=/nonexistent`, and calls tools
-  through a fixed absolute-path allowlist.
-- Privileged state lives in root-owned `700`/`600` files written through
-  no-follow directory descriptors with locking and atomic replacement.
-- Secrets travel over bounded stdin, never argv. QML never builds shell
-  commands, and every child process has a deadline and an output cap.
+- Polkit authorizes only `/usr/local/bin/omarchy-hotspot-helper`, and only for
+  the user who ran the installer.
+- The helper exposes a closed command set, clears its environment, sets
+  `PATH=/nonexistent`, and calls system tools through a fixed absolute-path
+  allowlist.
+- Privileged state is stored in root-owned `0700`/`0600` locations and written
+  through no-follow directory descriptors with locking and atomic replacement.
+- Secrets are passed over bounded standard input, never on the command line.
+  The panel never constructs shell commands, and every child process runs with
+  a deadline and an output limit.
 - The installer verifies a committed SHA-256 manifest before elevation, and CI
-  pins its actions to full commit SHAs.
+  workflows pin third-party actions to full commit SHAs.
 
-Details are in [docs/SECURITY.md](docs/SECURITY.md).
+The complete security model is documented in [docs/SECURITY.md](docs/SECURITY.md).
+
+**Reporting a vulnerability.** Please report suspected vulnerabilities
+privately to the maintainer ([@chillboy0101](https://github.com/chillboy0101))
+rather than in a public issue.
+
+## Operations
+
+| Task | Command |
+|---|---|
+| Check hotspot status | `pkexec /usr/local/bin/omarchy-hotspot-helper status` |
+| Access point log | `journalctl -u omarchy-hotspot` |
+| DHCP and DNS log | `journalctl -u omarchy-hotspot-dns` |
+| Update the bar widget | `omarchy plugin update io.github.chillboy0101.omarchy-hotspot` |
+| Update the system helper | `git pull && ./install.sh` (in your clone) |
+
+Runtime files are kept in `/run/omarchy-hotspot/` and are recreated on each
+start. Persistent settings are kept in `/var/lib/omarchy-hotspot/`.
 
 ## Troubleshooting
 
-| Symptom | What to check |
+| Symptom | Resolution |
 |---|---|
-| Panel says the adapter cannot create a concurrent AP interface | Your driver does not advertise station + AP. Check `iw list` (see [Requirements](#requirements)). |
+| The panel reports that the adapter cannot create a concurrent AP interface | The driver does not support station + AP. See [Hardware compatibility](#hardware-compatibility). |
 | `Device or resource busy` in `journalctl -u omarchy-hotspot` | Same cause: the driver allows only one active interface. |
-| Phone cannot see the network | `journalctl -u omarchy-hotspot` should show `AP-ENABLED`. Make sure the station is connected so the AP can mirror its channel. |
-| Connects but no internet | `iptables -L INPUT -n` and `iptables -t nat -L POSTROUTING -n`. The helper inserts an `ap0` ACCEPT and a MASQUERADE rule. |
-| No IP address on the phone | `journalctl -u omarchy-hotspot-dns` should show DISCOVER → OFFER → ACK. |
-| Toggle does nothing or asks for a password | The polkit rule in `/etc/polkit-1/rules.d/50-omarchy-hotspot.rules` must name your user. Rerun `./install.sh`. |
+| Clients cannot see the network | Confirm `AP-ENABLED` in `journalctl -u omarchy-hotspot` and that the laptop is connected to Wi-Fi so the channel can be mirrored. |
+| Clients connect but have no internet | Check `iptables -L INPUT -n` and `iptables -t nat -L POSTROUTING -n` for the `ap0` accept and masquerade rules. |
+| Clients do not receive an address | `journalctl -u omarchy-hotspot-dns` should show DISCOVER, OFFER, and ACK. |
+| The bar asks for a password or the toggle does nothing | Rerun `./install.sh` so the polkit rule matches your user. |
 
-## Removal
+## Uninstallation
 
 ```sh
-omarchy plugin remove io.github.chillboy0101.omarchy-hotspot --yes   # bar widget
-sudo rm /usr/local/bin/omarchy-hotspot-helper                        # system helper
+omarchy plugin remove io.github.chillboy0101.omarchy-hotspot --yes
+sudo rm /usr/local/bin/omarchy-hotspot-helper
 sudo rm /usr/local/lib/omarchy-hotspot-secure-state
 sudo rm /usr/local/lib/omarchy-hotspot-device-identification.sh
 sudo rm /usr/local/lib/omarchy-hotspot-discover-device.sh
@@ -192,52 +297,58 @@ sudo rm /usr/local/lib/omarchy-hotspot-lease-event.sh
 sudo rm /etc/polkit-1/rules.d/50-omarchy-hotspot.rules
 sudo rm /etc/NetworkManager/conf.d/99-unmanaged-ap0.conf
 nmcli general reload
-sudo rm -r /var/lib/omarchy-hotspot          # optional: saved name, password, device names
-sudo pacman -Rns hostapd dnsmasq             # optional: if nothing else uses them
+
+# Optional
+sudo rm -r /var/lib/omarchy-hotspot      # saved name, passphrase, and client names
+sudo pacman -Rns hostapd dnsmasq         # only if nothing else uses them
 ```
 
-## Project layout
+## Support
+
+Report bugs through [GitHub Issues](https://github.com/chillboy0101/omarchy-hotspot/issues/new?template=bug_report.md).
+Please include your Omarchy version, kernel version, Wi-Fi adapter and driver
+(`iw list` output helps), and the relevant `journalctl` logs.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development setup, coding standards, and the test suite. Changes to installed
+files require regenerating `payload.sha256`, as described there.
+
+### Repository layout
 
 ```
-manifest.json          Omarchy plugin manifest
-plugin/
-├── Panel.qml          bar button and panel UI
-├── run-bounded.py     process-group deadline and output limits
-├── copy-secret.py     bounded stdin-to-clipboard bridge
-└── qr.sh              bounded stdin-to-QR matrix generator
-src/
-├── omarchy-hotspot-helper   root helper (closed subcommand allowlist)
-├── secure-state.py          no-follow atomic state storage
-├── install-payload.py       digest-verified installer
-└── *.sh                     device identification and DHCP lease hooks
-config/                polkit rule and NetworkManager exemption
-payload.sha256         digests of every file the installer writes
-tests/                 security, installer, and behavior tests
+manifest.json              Omarchy plugin manifest
+plugin/                    Bar widget (QML) and bounded process helpers
+src/                       Root helper, secure state, installer, device discovery
+config/                    Polkit rule and NetworkManager exemption
+payload.sha256             Digests of every file the installer writes
+tests/                     Security, installer, and behavior tests
+docs/                      Security model and images
 ```
 
-## Credits
+### Contributors
 
-Built for the [Omarchy](https://github.com/basecamp/omarchy) desktop by
-Basecamp and its Quickshell shell. The bar widget follows the structure of
-Omarchy's built-in `omarchy.network` widget, and the QR generator uses the same
-module format as `omarchy.wifiqr`.
+| Contributor | Contribution |
+|---|---|
+| [Wis-kal](https://github.com/chillboy0101) (`@chillboy0101`) | Owner and maintainer |
+| [Muhammad Dicky Isra](https://github.com/DaDecky) (`@DaDecky`) | Scoped IPv6 resolver fix |
+| [JunaidIRF](https://github.com/JunaidIRF) (`@JunaidIRF`) | Inline SSID editor and popup overflow fix |
 
-Powered by [hostapd](https://w1.fi/hostapd/),
+## Acknowledgements
+
+Built for [Omarchy](https://github.com/basecamp/omarchy) and its Quickshell-based
+shell. The bar widget follows the conventions of Omarchy's built-in
+`omarchy.network` widget, and the QR generator uses the same module format as
+`omarchy.wifiqr`. The runtime relies on [hostapd](https://w1.fi/hostapd/),
 [dnsmasq](https://thekelleys.org.uk/dnsmasq/doc.html),
 [NetworkManager](https://networkmanager.dev/),
 [Quickshell](https://quickshell.org/), and
 [qrencode](https://fukuchi.org/works/qrencode/).
 
-## Contributors
-
-| Contributor | Role |
-|---|---|
-| **[Wis-kal](https://github.com/chillboy0101)** (`@chillboy0101`) | Owner and maintainer |
-| **[Muhammad Dicky Isra](https://github.com/DaDecky)** (`@DaDecky`) | Scoped IPv6 resolver fix |
-| **[JunaidIRF](https://github.com/JunaidIRF)** (`@JunaidIRF`) | Inline SSID editor and popup overflow fix |
-
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Omarchy Hotspot is a community plugin. It is not affiliated with or endorsed
+by Basecamp or the Omarchy project.
 
 ## License
 
-[MIT](LICENSE) © 2026 Wis-kal
+Released under the [MIT License](LICENSE). Copyright © 2026 Wis-kal.
