@@ -194,7 +194,9 @@ radar_channels() {
   local iface phy
   iface="$(station_iface)"
   [ -n "$iface" ] || return 0
-  phy="$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/ { print $2; exit }')" || return 0
+  # Match the field exactly: iw prints any "ssid" line first, and an SSID
+  # may contain "wiphy".
+  phy="$(iw dev "$iface" info 2>/dev/null | awk '$1 == "wiphy" { print $2; exit }')" || return 0
   [ -n "$phy" ] || return 0
   iw "phy#$phy" info 2>/dev/null | awk '/MHz \[[0-9]+\].*radar detection/ { if (match($0, /\[[0-9]+\]/)) print substr($0, RSTART + 1, RLENGTH - 2) }' || true
 }

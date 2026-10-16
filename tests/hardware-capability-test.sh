@@ -62,10 +62,11 @@ hostapd_conf_for() {
     station_iface() { echo wlo1; }
     iw() {
       if [[ "$1" == phy* ]]; then
-        [[ -z "${phy_unreadable:-}" ]] || return 1
+        [[ "$1" == 'phy#0' && -z "${phy_unreadable:-}" ]] || return 1
         phy_info
       else
-        printf '\tchannel %s\n\twiphy 0\n' "$link"
+        # iw prints the SSID, when the kernel reports one, before wiphy.
+        printf '\tssid my wiphy 5\n\ttype managed\n\twiphy 0\n\tchannel %s\n' "$link"
       fi
     }
     ap_ssid() { echo test-ssid; }
