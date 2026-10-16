@@ -115,6 +115,25 @@ When an adapter cannot create the concurrent interface, the panel reports the
 driver and PHY that refused it. The plugin never falls back to a mode that
 disconnects the station.
 
+### Channel selection
+
+The access point mirrors the station's channel and channel width, which
+single-radio adapters require. It avoids channels on which hostapd cannot start
+an access point:
+
+- **Radar (DFS) channels** in 5 GHz, which require a radar check of a minute or
+  more before transmitting.
+- **Disabled or "no IR" channels**, as reported by `iw phy` for the current
+  regulatory domain.
+- **6 GHz channels**, where an access point must use WPA3 (SAE); the hotspot
+  uses WPA2.
+
+When the station's channel block includes such a channel, as every 160 MHz
+block does in many countries, the access point uses the widest narrower block
+around the same channel (usually 80 MHz). When the station's own channel is
+affected, the panel explains why and the hotspot stays off. The Wi-Fi
+connection is never interrupted.
+
 ## Installation
 
 Installation has two parts: the bar widget and the system helper.
@@ -281,6 +300,9 @@ start. Persistent settings are kept in `/var/lib/omarchy-hotspot/`.
 | The panel reports that the adapter cannot create a concurrent AP interface | The driver does not support station + AP. See [Hardware compatibility](#hardware-compatibility). |
 | `Device or resource busy` in `journalctl -u omarchy-hotspot` | Same cause: the driver allows only one active interface. |
 | Clients cannot see the network | Confirm `AP-ENABLED` in `journalctl -u omarchy-hotspot` and that the laptop is connected to Wi-Fi so the channel can be mirrored. |
+| The panel reports a radar (DFS) channel | The network you are connected to uses a DFS channel (for example 52–64 or 100–144). Connect to a 2.4 GHz network or to a 5 GHz network on another channel, or change the router's channel. |
+| The panel reports that regulatory rules forbid an access point (no IR), or that the radio cannot use the channel | The regulatory domain allows joining a network on that channel but not hosting one. If `iw reg get` shows `country 00`, every 5 GHz channel is no IR: set your country in `/etc/conf.d/wireless-regdom`. Otherwise connect to a network on another channel. |
+| The panel reports a 6 GHz channel | A 6 GHz access point requires WPA3 (SAE). Connect to the router's 2.4 GHz or 5 GHz network instead. |
 | Clients connect but have no internet | Check `iptables -L INPUT -n` and `iptables -t nat -L POSTROUTING -n` for the `ap0` accept and masquerade rules. |
 | Clients do not receive an address | `journalctl -u omarchy-hotspot-dns` should show DISCOVER, OFFER, and ACK. |
 | The bar asks for a password or the toggle does nothing | Rerun `./install.sh` so the polkit rule matches your user. |
