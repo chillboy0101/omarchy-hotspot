@@ -266,6 +266,22 @@ ensure_state() {
   state_store init
 }
 
+# ap0 needs its own address: mac80211 will not bring up an AP beside a
+# station with the same one ("Name not unique on network"), and the RTL8723DE
+# firmware rejects concurrent interfaces with one MAC. Print a stable,
+# locally administered unicast address derived from the station address: 02
+# and its last five octets, or 06 when the station's own address already
+# starts with 02 (a randomized or virtual adapter, such as mac80211_hwsim).
+ap_mac_for() {
+  local station_mac="${1,,}"
+  [[ "$station_mac" =~ ^[0-9a-f]{2}(:[0-9a-f]{2}){5}$ ]] || return 1
+  if [[ "${station_mac:0:2}" == 02 ]]; then
+    echo "06${station_mac:2}"
+  else
+    echo "02${station_mac:2}"
+  fi
+}
+
 ensure_vif() {
   vif_exists && return 0
   local iface phy
@@ -279,11 +295,13 @@ ensure_vif() {
     echo "Wi-Fi adapter driver $driver on $phy cannot create a concurrent AP interface; it cannot keep Wi-Fi connected while hosting this hotspot. Use a Wi-Fi adapter whose driver supports concurrent managed+AP interfaces." >&2
     return 1
   fi
-  # The RTL8723DE firmware rejects concurrent interfaces with one MAC.
-  # Derive a stable locally administered address from the station address.
   local ap_mac current_ap_mac station_mac
   station_mac="$(<"/sys/class/net/$iface/address")"
-  ap_mac="02${station_mac:2}"
+  if ! ap_mac="$(ap_mac_for "$station_mac")"; then
+    iw dev "$VIF" del 2>/dev/null || true
+    echo "cannot derive a hotspot interface MAC address from the station address '$station_mac'" >&2
+    return 1
+  fi
   current_ap_mac="$(<"/sys/class/net/$VIF/address")"
   if [[ "${current_ap_mac,,}" != "${ap_mac,,}" ]]; then
     if ! ip link set "$VIF" address "$ap_mac"; then
