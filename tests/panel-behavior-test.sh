@@ -55,4 +55,11 @@ if grep -q 'wrapMode: Text.WrapAnywhere' "$panel"; then
   exit 1
 fi
 
+# WPA passphrases may start or end with spaces; reading one must keep them.
+grep -q 'var password = String(stdoutText || "").replace(/\\r?\\n$/, "")' "$panel"
+if grep -q 'var password = String(stdoutText || "").trim()' "$panel"; then
+  echo "password reads must not trim valid passphrase spaces" >&2
+  exit 1
+fi
+
 echo "panel behavior tests passed"

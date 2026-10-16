@@ -687,7 +687,9 @@ Panel {
     onExited: function(code) {
       if (code === 0) {
         if (root.opened) {
-          var password = String(stdoutText || "").trim()
+          // Spaces are valid WPA passphrase characters; strip only the
+          // line terminator so reveal, copy, and QR use the exact secret.
+          var password = String(stdoutText || "").replace(/\r?\n$/, "")
           if (password !== root.hotspotPassword) root.hidePassword()
           root.hotspotPassword = password
           if (root.qrPendingPassword) Qt.callLater(root.generateQr)
