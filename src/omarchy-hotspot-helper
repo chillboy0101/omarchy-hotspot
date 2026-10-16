@@ -151,6 +151,19 @@ station_vht_center() {
   iw dev "$iface" info 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "center1:") { print $(i + 1); exit } }'
 }
 
+# "[HT40+]" | "[HT40-]" — the primary's own HT40 pair inside a block of the
+# given center and width: "+" when the primary is that pair's lower 20 MHz.
+# With ieee80211n=1 hostapd accepts only these pairs, so a fixed [HT40+]
+# fails (or falls back to 20 MHz) for primaries such as ch40 or ch161.
+ht40_in_block() {
+  local freq="$1" center="$2" width="$3"
+  if [ $(((freq - center + width / 2 - 10) / 20 % 2)) -eq 0 ]; then
+    echo "[HT40+]"
+  else
+    echo "[HT40-]"
+  fi
+}
+
 ap_ssid() {
   state_store read-ssid
 }
@@ -166,8 +179,10 @@ hotspot_on() {
 wait_for_hostapd() {
   # systemd can report the transient unit active before hostapd has finished
   # initialization (or after it has already failed). Require the control
-  # interface to report ENABLED before starting dnsmasq.
-  for _ in $(seq 1 20); do
+  # interface to report ENABLED before starting dnsmasq. With HT40 (including
+  # VHT80/160) hostapd first runs a 20/40 coexistence scan (state=HT_SCAN),
+  # which takes over a second on 2.4 GHz, so allow ~5 s.
+  for _ in $(seq 1 100); do
     if systemctl is-active --quiet omarchy-hotspot 2>/dev/null \
       && hostapd_cli -p /run/hostapd -i "$VIF" status 2>/dev/null \
       | grep -qx 'state=ENABLED'; then
@@ -249,16 +264,17 @@ write_hostapd_conf() {
       vhtcenter80="$(station_vht_center)"
       if [ -n "$vhtcenter80" ]; then
         seg0=$(((vhtcenter80 - 5000) / 5))
+        ht="$(ht40_in_block "$freq" "$vhtcenter80" 80)"
       else
         # Fallback: primary at the low edge of the 80 MHz block.
         seg0=$(((freq + 20 - 5000) / 5))
       fi
       ;;
     160)
-      ht="[HT40+]"
       chwidth=2
       local vhtcenter
       vhtcenter="$(station_vht_center)"
+      ht="$(ht40_in_block "$freq" "$vhtcenter" 160)"
       seg0=$(((vhtcenter - 5000) / 5))
       # seg1 = center of the 80 MHz half that does NOT hold the primary.
       if [ "$freq" -lt "$vhtcenter" ]; then
@@ -272,6 +288,13 @@ write_hostapd_conf() {
       ;;
   esac
 
+  # Without ieee80211n=1 hostapd ignores ht_capab and runs a 20 MHz non-HT
+  # (802.11a/g, 54 Mbps) AP, and ieee80211ac=1 alone sends VHT elements with
+  # no HT elements, so clients fall back to legacy rates. HT and VHT also
+  # need WMM. HT40 cannot skip hostapd's 20/40 coexistence scan (noscan is
+  # an OpenWrt patch, not upstream). If that scan forces HT20, the AP keeps
+  # the station's primary channel: narrower, but a channel definition the
+  # shared radio can still combine with the station's.
   state_store write-hostapd <<EOF
 interface=$VIF
 driver=nl80211
@@ -283,6 +306,8 @@ wpa=2
 wpa_passphrase=$(state_store read-password)
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
+ieee80211n=1
+wmm_enabled=1
 ht_capab=$ht
 ${seg0:+ieee80211ac=1}
 ${seg0:+vht_oper_chwidth=$chwidth}
