@@ -164,6 +164,28 @@ ht40_in_block() {
   fi
 }
 
+# Center frequency (MHz) of the 5 GHz block of the given width (80 or 160)
+# that holds a channel. The blocks sit on a fixed grid (seg0 42 to 171 at
+# 80 MHz, 50/114/163 at 160 MHz), so this is the station's own center1 when
+# iw does not print one. Every primary in a block lies within
+# width/2 - 10 MHz of its center, as hostapd's HT/VHT coupling check
+# requires. Prints nothing for a channel outside the grid.
+vht_block_center() {
+  local channel="$1" width="$2" seg0 centers reach
+  if [ "$width" -eq 160 ]; then
+    centers="50 114 163"
+  else
+    centers="42 58 106 122 138 155 171"
+  fi
+  reach=$(((width / 2 - 10) / 5))
+  for seg0 in $centers; do
+    if [ "$channel" -ge $((seg0 - reach)) ] && [ "$channel" -le $((seg0 + reach)) ]; then
+      echo $((5000 + seg0 * 5))
+      return 0
+    fi
+  done
+}
+
 ap_ssid() {
   state_store read-ssid
 }
@@ -232,7 +254,7 @@ ensure_vif() {
 }
 
 write_hostapd_conf() {
-  local channel freq mode ht seg0 seg1 chwidth
+  local channel freq mode width ht seg0 chwidth
   channel="$(station_channel)"
   if [ -z "$channel" ]; then
     channel=1
@@ -249,7 +271,8 @@ write_hostapd_conf() {
   # firmware beacons on the shared phy. Using the actual center1 avoids the
   # "Frequency not present (seg0)" failure when the primary channel sits
   # asymmetrically inside the VHT80/160 block.
-  case "$(station_width)" in
+  width="$(station_width)"
+  case "$width" in
     40)
       if [ "$(station_center_offset)" = "minus" ]; then
         ht="[HT40-]"
@@ -257,30 +280,19 @@ write_hostapd_conf() {
         ht="[HT40+]"
       fi
       ;;
-    80)
-      ht="[HT40+]"
-      chwidth=1
-      local vhtcenter80
-      vhtcenter80="$(station_vht_center)"
-      if [ -n "$vhtcenter80" ]; then
-        seg0=$(((vhtcenter80 - 5000) / 5))
-        ht="$(ht40_in_block "$freq" "$vhtcenter80" 80)"
-      else
-        # Fallback: primary at the low edge of the 80 MHz block.
-        seg0=$(((freq + 20 - 5000) / 5))
-      fi
-      ;;
-    160)
-      chwidth=2
+    80 | 160)
       local vhtcenter
       vhtcenter="$(station_vht_center)"
-      ht="$(ht40_in_block "$freq" "$vhtcenter" 160)"
-      seg0=$(((vhtcenter - 5000) / 5))
-      # seg1 = center of the 80 MHz half that does NOT hold the primary.
-      if [ "$freq" -lt "$vhtcenter" ]; then
-        seg1=$(((vhtcenter + 40 - 5000) / 5))
+      vhtcenter="${vhtcenter:-$(vht_block_center "$channel" "$width")}"
+      if [ -n "$vhtcenter" ]; then
+        # vht_oper_chwidth 1 is 80 MHz and 2 is 160 MHz. At 160 MHz seg0 is
+        # the 160 MHz center and seg1 stays unset: seg1 is only for 80+80,
+        # and hostapd 2.12 rejects it at 160 MHz.
+        chwidth=$((width / 80))
+        seg0=$(((vhtcenter - 5000) / 5))
+        ht="$(ht40_in_block "$freq" "$vhtcenter" "$width")"
       else
-        seg1=$(((vhtcenter - 40 - 5000) / 5))
+        ht="[HT20]"
       fi
       ;;
     *)
@@ -312,7 +324,6 @@ ht_capab=$ht
 ${seg0:+ieee80211ac=1}
 ${seg0:+vht_oper_chwidth=$chwidth}
 ${seg0:+vht_oper_centr_freq_seg0_idx=$seg0}
-${seg1:+vht_oper_centr_freq_seg1_idx=$seg1}
 ignore_broadcast_ssid=0
 deny_mac_file=$BLOCKED_FILE
 EOF
