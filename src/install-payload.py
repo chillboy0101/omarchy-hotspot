@@ -344,7 +344,7 @@ def unprivileged(repo: pathlib.Path) -> int:
     installer_digest = sha256(installer)
     manifest_digest = sha256(manifest)
     print(f"==> Verified {len(entries)} payload files against {MANIFEST_NAME}")
-    print(f"    manifest sha256 {manifest_digest}")
+    print(f"    manifest sha256 {manifest_digest}", flush=True)
 
     command = ["/usr/bin/python3", "-I", "-S", "-c", BOOTSTRAP, installer_digest, manifest_digest]
     env = {"PATH": "/usr/bin", "LANG": "C.UTF-8"}
