@@ -19,6 +19,65 @@ mac_guard_line="$(grep -n "if \[\[ \"\${current_ap_mac,,}\" != \"\${ap_mac,,}\" 
 mac_set_line="$(grep -n "if ! ip link set \"\$VIF\" address \"\$ap_mac\"" "$helper" | cut -d: -f1)"
 [[ "$mac_guard_line" -lt "$mac_set_line" ]]
 
+# ap0's address comes from ap_mac_for, which must keep it locally
+# administered, unicast and apart from the station's own address: mac80211
+# refuses to bring up a duplicate ("Name not unique on network") and the
+# RTL8723DE firmware rejects one. It must be the same on every start.
+ensure_vif_body="$(awk '/^ensure_vif[(][)] [{]$/,/^}$/' "$helper")"
+# shellcheck disable=SC2016 # Verify the literal command substitution in the helper.
+grep -qF 'if ! ap_mac="$(ap_mac_for "$station_mac")"; then' <<<"$ensure_vif_body"
+if grep -qF 'ap_mac="02' <<<"$ensure_vif_body"; then
+  echo "ensure_vif must derive the ap0 address with ap_mac_for" >&2
+  exit 1
+fi
+(
+  eval "$(awk '/^ap_mac_for[(][)] [{]$/,/^}$/' "$helper")"
+
+  expect_ap_mac() {
+    local station="$1" expected="$2" actual
+    actual="$(ap_mac_for "$station" || true)"
+    if [[ "$actual" != "$expected" ]]; then
+      echo "station $station: ap0 address '$actual', expected '$expected'" >&2
+      exit 1
+    fi
+  }
+  # A globally administered station keeps the address earlier releases used.
+  expect_ap_mac 00:e0:4c:12:34:56 02:e0:4c:12:34:56
+  expect_ap_mac A4:5E:60:C1:D2:E3 02:5e:60:c1:d2:e3
+  # Randomized (locally administered) station addresses, as NetworkManager
+  # makes them. Only one that starts with 02 needs the further bit.
+  expect_ap_mac 3a:7f:11:22:33:44 02:7f:11:22:33:44
+  expect_ap_mac 06:11:22:33:44:55 02:11:22:33:44:55
+  expect_ap_mac 02:5c:9a:0b:7e:21 06:5c:9a:0b:7e:21
+  expect_ap_mac 02:AB:CD:EF:01:23 06:ab:cd:ef:01:23
+  # mac80211_hwsim radios are 02:00:00:00:NN:00.
+  expect_ap_mac 02:00:00:00:00:00 06:00:00:00:00:00
+  expect_ap_mac 02:00:00:00:01:00 06:00:00:00:01:00
+
+  # Every first octet, with two different tails.
+  for tail in 00:00:00:00:00 e0:4c:68:02:9f; do
+    for ((octet = 0; octet < 256; octet++)); do
+      station="$(printf '%02x' "$octet"):$tail"
+      ap="$(ap_mac_for "$station")"
+      first=$((16#${ap:0:2}))
+      if ((first & 1)) || ! ((first & 2)) || [[ "$ap" == "$station" ]] \
+        || [[ "${ap:2}" != ":$tail" || "$(ap_mac_for "$station")" != "$ap" ]]; then
+        echo "station $station: ap0 address '$ap' is not a stable, distinct, locally administered unicast address" >&2
+        exit 1
+      fi
+    done
+  done
+
+  # Anything but six octets is refused, so ensure_vif sets no address.
+  for station in '' 00:e0:4c:12:34 00:e0:4c:12:34:56:78 zz:e0:4c:12:34:56 00-e0-4c-12-34-56 \
+    $'00:e0:4c:12:34:56\n'; do
+    if ap="$(ap_mac_for "$station")" || [[ -n "$ap" ]]; then
+      echo "station '$station': ap_mac_for must refuse a malformed address" >&2
+      exit 1
+    fi
+  done
+)
+
 if grep -q "ip link set \"\$VIF\" up" "$helper"; then
   echo "startup must let hostapd bring the AP interface up" >&2
   exit 1
