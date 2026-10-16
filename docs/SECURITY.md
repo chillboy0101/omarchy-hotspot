@@ -18,6 +18,11 @@ describes the boundary used by the 1.0 release.
 
 ## Installation
 
+The panel's **Set up hotspot** button runs the repository's own `install.sh`
+from the plugin folder through the bounded process runner, as a fixed program
+with no arguments and no shell. Until setup succeeds, the panel never calls
+`pkexec`.
+
 `install.sh` runs `src/install-payload.py`, which never lets root read the
 user-writable checkout:
 

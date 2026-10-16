@@ -140,24 +140,29 @@ connection is never interrupted.
 ## Installation
 
 Omarchy Hotspot is listed in the [Omarchy plugin marketplace](https://plugins.omarchy.org/plugin.html?id=io.github.chillboy0101.omarchy-hotspot).
-Installation has two parts: the bar widget and the system helper.
+Installation takes two steps and no terminal work beyond adding the widget.
 
 ### Step 1. Add the bar widget
+
+Install it from the marketplace, or run:
 
 ```sh
 omarchy plugin add https://github.com/chillboy0101/omarchy-hotspot --yes
 omarchy plugin enable io.github.chillboy0101.omarchy-hotspot --section right
 ```
 
-### Step 2. Install the system helper
+### Step 2. Run the one-time setup from the panel
+
+Click the hotspot icon in the bar, then **Set up hotspot**. The panel runs the
+plugin's own digest-verified installer (`install.sh` in the plugin folder), and
+you enter your password once. When it finishes, the switch appears and the
+hotspot is ready.
+
+To run the same setup from a terminal instead:
 
 ```sh
-git clone https://github.com/chillboy0101/omarchy-hotspot.git
-cd omarchy-hotspot
-./install.sh
+~/.config/omarchy/plugins/io.github.chillboy0101.omarchy-hotspot/install.sh
 ```
-
-You are asked for your password once.
 
 ### Changes made by the installer
 
@@ -295,7 +300,7 @@ rather than in a public issue.
 | Access point log | `journalctl -u omarchy-hotspot` |
 | DHCP and DNS log | `journalctl -u omarchy-hotspot-dns` |
 | Update the bar widget | `omarchy plugin update io.github.chillboy0101.omarchy-hotspot` |
-| Update the system helper | `git pull && ./install.sh` (in your clone) |
+| Update the system helper | `omarchy plugin update io.github.chillboy0101.omarchy-hotspot`, then run `install.sh` from the plugin folder |
 
 Runtime files are kept in `/run/omarchy-hotspot/` and are recreated on each
 start. Persistent settings are kept in `/var/lib/omarchy-hotspot/`.
@@ -312,7 +317,7 @@ start. Persistent settings are kept in `/var/lib/omarchy-hotspot/`.
 | The panel reports a 6 GHz channel | A 6 GHz access point requires WPA3 (SAE). Connect to the router's 2.4 GHz or 5 GHz network instead. |
 | Clients connect but have no internet | Check `iptables -L INPUT -n` and `iptables -t nat -L POSTROUTING -n` for the `ap0` accept and masquerade rules. |
 | Clients do not receive an address | `journalctl -u omarchy-hotspot-dns` should show DISCOVER, OFFER, and ACK. |
-| The bar asks for a password or the toggle does nothing | Rerun `./install.sh` so the polkit rule matches your user. |
+| The bar asks for a password or the toggle does nothing | Run `install.sh` from the plugin folder again so the polkit rule matches your user. |
 
 ## Uninstallation
 

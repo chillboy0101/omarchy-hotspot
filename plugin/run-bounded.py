@@ -12,7 +12,9 @@ import time
 
 TIMEOUT_EXIT = 124
 OUTPUT_LIMIT_EXIT = 125
-MAX_TIMEOUT = 30.0
+# Each caller passes its own deadline (status calls use seconds); the cap
+# allows the one-time setup to wait for the password prompt and pacman.
+MAX_TIMEOUT = 900.0
 MAX_OUTPUT = 262_144
 
 

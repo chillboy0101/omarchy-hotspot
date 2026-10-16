@@ -24,7 +24,18 @@ Panel {
   readonly property string copyScript: decodeURIComponent(String(Qt.resolvedUrl("copy-secret.py")).replace(/^file:\/\//, ""))
   readonly property string python: "/usr/bin/python3"
   readonly property string pkexec: "/usr/bin/pkexec"
+  // The repository's own digest-verified installer, run for one-time setup.
+  readonly property string installScript: decodeURIComponent(String(Qt.resolvedUrl("../install.sh")).replace(/^file:\/\//, ""))
+  readonly property string secureStateTool: "/usr/local/lib/omarchy-hotspot-secure-state"
   property string hotspotSsid: "OmarchyHotspot"
+
+  // "unknown" | "missing" | "installed": whether the root helper is set up.
+  // Until it is, the panel never calls pkexec and offers one-time setup.
+  property string helperState: "unknown"
+  readonly property bool helperInstalled: helperState === "installed"
+  readonly property bool needsSetup: helperState === "missing"
+  property bool setupBusy: false
+  property string setupError: ""
 
   // "off" | "on" | "busy" | "error"
   property string hotspotState: "off"
@@ -142,6 +153,7 @@ Panel {
   }
 
   function startHelper(proc, action, args, seconds, outputLimit) {
+    if (!root.helperInstalled) return
     startBounded(proc, seconds || 5, outputLimit || 8192, root.pkexec, [root.helper, action].concat(args || []))
   }
 
@@ -155,7 +167,28 @@ Panel {
     proc[propertyName] = next
   }
 
+  function checkHelper() {
+    if (helperCheckProc.running) return
+    startBounded(helperCheckProc, 3, 1024, "/usr/bin/test", ["-x", root.helper, "-a", "-f", root.secureStateTool])
+  }
+
+  // One password prompt installs the packages, root helper and polkit rule.
+  // install.sh verifies every file against payload.sha256 before elevating.
+  function runSetup() {
+    if (setupBusy || helperInstalled) return
+    setupBusy = true
+    setupError = ""
+    setupProc.lines = []
+    // The password prompt needs the keyboard, so dismiss the panel first.
+    root.close()
+    startBounded(setupProc, 900, 65536, root.installScript, [])
+  }
+
   function refresh() {
+    if (!helperInstalled) {
+      checkHelper()
+      return
+    }
     if (statusProc.running || isBusy) return
     // pkexec (passwordless via polkit rule): channel + client counts need root.
     startHelper(statusProc, "status", [], 4, 4096)
@@ -175,6 +208,10 @@ Panel {
   }
 
   function toggleHotspot() {
+    if (!helperInstalled) {
+      if (needsSetup && !opened) root.open()
+      return
+    }
     if (toggleProc.running || isBusy) return
     pendingOn = !isOn
     hotspotState = "busy"
@@ -443,6 +480,10 @@ Panel {
   }
 
   function activate() {
+    if (needsSetup) {
+      runSetup()
+      return
+    }
     if (!cursorActive) return
     if (focusSection === "hero") toggleHotspot()
     else if (focusSection === "actions") {
@@ -475,6 +516,52 @@ Panel {
   readonly property bool editHasCursor: cursorActive && focusSection === "actions" && actionIndex === 2
 
   // ---- Processes --------------------------------------------------------
+  Process {
+    id: helperCheckProc
+    property string stdoutText: ""
+    property string stderrText: ""
+    onExited: function(code) {
+      root.helperState = code === 0 ? "installed" : "missing"
+      if (root.helperInstalled) Qt.callLater(root.refresh)
+    }
+  }
+
+  Process {
+    id: setupProc
+    property string stdoutText: ""
+    property string stderrText: ""
+    // Only the last lines are kept, to explain a failure.
+    property var lines: []
+    function keep(line) {
+      var next = setupProc.lines.concat([String(line).slice(0, 240)])
+      setupProc.lines = next.length > 12 ? next.slice(next.length - 12) : next
+    }
+    stdout: SplitParser { onRead: function(data) { setupProc.keep(data) } }
+    stderr: SplitParser { onRead: function(data) { setupProc.keep(data) } }
+    onExited: function(code) {
+      root.setupBusy = false
+      if (code === 0) {
+        root.setupError = ""
+        root.helperState = "unknown"
+        root.checkHelper()
+        return
+      }
+      if (code === 126 || code === 127) {
+        root.setupError = "Setup was cancelled. Nothing was installed."
+        return
+      }
+      if (code === 124) {
+        root.setupError = "Setup timed out. Try again."
+        return
+      }
+      var detail = ""
+      for (var i = setupProc.lines.length - 1; i >= 0 && !detail; i--) {
+        if (/fail|error|refus|cannot|denied/i.test(setupProc.lines[i])) detail = setupProc.lines[i]
+      }
+      root.setupError = (detail || ("Setup failed (exit " + code + ").")).trim().slice(0, 160)
+    }
+  }
+
   Process {
     id: statusProc
     property string stdoutText: ""
@@ -926,6 +1013,7 @@ Panel {
 
           ToggleSwitch {
             id: powerSwitch
+            visible: !root.needsSetup
             checked: root.visualOn
             busy: root.isBusy
             hasCursor: root.heroHasCursor
@@ -966,7 +1054,7 @@ Panel {
             id: heroActivity
             visible: !root.isError
             width: parent.width
-            text: root.visualOn ? root.activityPhrase.toUpperCase() : "TURNED OFF"
+            text: root.needsSetup ? "SETUP REQUIRED" : (root.visualOn ? root.activityPhrase.toUpperCase() : "TURNED OFF")
             textFormat: Text.PlainText
             color: Qt.darker(root.foreground, 1.4)
             font.family: root.fontFamily
@@ -999,6 +1087,71 @@ Panel {
             }
           }
 
+        }
+      }
+
+      // ---------- One-time setup (root helper not installed yet) ----------
+      Rectangle {
+        id: setupBox
+        visible: root.needsSetup
+        width: parent.width
+        implicitHeight: setupBoxInner.implicitHeight + Style.space(20)
+        color: Qt.alpha(root.foreground, 0.05)
+        radius: Style.cornerRadius
+        border.color: Qt.alpha(root.foreground, 0.22)
+        border.width: 1
+
+        Column {
+          id: setupBoxInner
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.margins: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(8)
+
+          Text {
+            width: parent.width
+            text: "ONE-TIME SETUP"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 1.2
+          }
+
+          Text {
+            width: parent.width
+            text: "Installs hostapd, dnsmasq and a small root helper so the hotspot can run while Wi-Fi stays connected. You'll be asked for your password once."
+            textFormat: Text.PlainText
+            color: Qt.darker(root.foreground, 1.2)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.Wrap
+          }
+
+          Text {
+            visible: root.setupError !== ""
+            width: parent.width
+            text: root.setupError
+            textFormat: Text.PlainText
+            color: root.urgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.Wrap
+          }
+
+          Button {
+            id: setupButton
+            text: root.setupBusy ? "Setting up…" : "Set up hotspot"
+            iconText: "󰒓"
+            iconSpinning: root.setupBusy
+            bordered: true
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            hasCursor: root.cursorActive && root.focusSection === "hero"
+            onHovered: function(on) { if (on) root.setSection("hero") }
+            onClicked: root.runSetup()
+          }
         }
       }
 

@@ -91,4 +91,14 @@ if grep -q 'var password = String(stdoutText || "").trim()' "$panel"; then
   exit 1
 fi
 
+# One-time setup runs the repository's own installer from the panel, and no
+# pkexec call happens before the helper exists.
+grep -q 'Qt.resolvedUrl("../install.sh")' "$panel"
+grep -q 'startBounded(setupProc, 900, 65536, root.installScript, \[\])' "$panel"
+grep -q 'function startHelper(proc, action, args, seconds, outputLimit) {' "$panel"
+grep -A1 'function startHelper(proc, action, args, seconds, outputLimit) {' "$panel" | grep -q 'if (!root.helperInstalled) return'
+grep -q 'text: root.setupBusy ? "Setting up…" : "Set up hotspot"' "$panel"
+grep -q 'visible: !root.needsSetup' "$panel"
+[[ -x "$repo_dir/install.sh" ]]
+
 echo "panel behavior tests passed"
