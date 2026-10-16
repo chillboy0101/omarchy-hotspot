@@ -51,12 +51,14 @@ iw list | grep -A3 "valid interface combinations"
 ```
 
 The AP mirrors the station's channel and channel width automatically, which
-single-radio adapters require. It stays off 5 GHz radar (DFS) channels,
-which an access point may use only after a radar check of a minute or more:
-when the station's block includes one, as every 160 MHz block does in many
-countries, the AP uses the widest narrower block around the same channel
-(usually 80 MHz). When the station's own channel is a DFS channel, the panel
-says so and the hotspot stays off; Wi-Fi stays connected.
+single-radio adapters require. It stays off channels where hostapd will not
+start an access point: 5 GHz radar (DFS) channels, which need a radar check
+of a minute or more first, and channels that `iw phy` marks disabled or
+"no IR" (no initiating radiation). When the station's block includes one, as
+every 160 MHz block does in many countries, the AP uses the widest narrower
+block around the same channel (usually 80 MHz). When the station's own
+channel is one, the panel says so and the hotspot stays off; Wi-Fi stays
+connected.
 
 | Adapter | Driver | Status |
 |---|---|---|
@@ -182,6 +184,7 @@ Details are in [docs/SECURITY.md](docs/SECURITY.md).
 | `Device or resource busy` in `journalctl -u omarchy-hotspot` | Same cause: the driver allows only one active interface. |
 | Phone cannot see the network | `journalctl -u omarchy-hotspot` should show `AP-ENABLED`. Make sure the station is connected so the AP can mirror its channel. |
 | Panel says Wi-Fi uses a radar (DFS) channel | The network you are connected to is on a DFS channel (for example 52-64 or 100-144). Connect to a 2.4 GHz network or a 5 GHz network on another channel, or set your router to one. |
+| Panel says regulatory rules forbid starting an access point (no IR), or that the radio cannot use the channel | Your regulatory domain lets this radio join a network on that channel but not host one there. If `iw reg get` shows `country 00`, every 5 GHz channel is no IR: set your country in `/etc/conf.d/wireless-regdom`. Otherwise connect to a network on another channel. |
 | Connects but no internet | `iptables -L INPUT -n` and `iptables -t nat -L POSTROUTING -n`. The helper inserts an `ap0` ACCEPT and a MASQUERADE rule. |
 | No IP address on the phone | `journalctl -u omarchy-hotspot-dns` should show DISCOVER → OFFER → ACK. |
 | Toggle does nothing or asks for a password | The polkit rule in `/etc/polkit-1/rules.d/50-omarchy-hotspot.rules` must name your user. Rerun `./install.sh`. |

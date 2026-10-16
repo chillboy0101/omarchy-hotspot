@@ -30,20 +30,46 @@ wait_line="$(grep -n 'wait_for_hostapd' "$helper" | head -1 | cut -d: -f1)"
 dns_line="$(grep -n 'systemd-run --unit=omarchy-hotspot-dns' "$helper" | head -1 | cut -d: -f1)"
 [[ "$wait_line" -lt "$dns_line" ]]
 
-# `iw phy <phy> info` as iw 6.17 prints it for a 5 GHz radio, with the
-# channels in $radar marked for radar detection. The interface combination
-# line is there to show that "radar detect widths" is not a channel.
+# `iw phy <phy> info` as iw 6.17 prints it for a 2.4/5/6 GHz radio. The 2.4
+# and 5 GHz channels in $radar, $no_ir and $disabled carry those flags, and
+# those in $absent are left out. 6 GHz reuses the 2.4 and 5 GHz channel
+# numbers: as in ETSI countries, 1-93 are usable and the rest disabled, so a
+# lookup by number would let 6 GHz [13] pass a no-IR 2.4 GHz ch13 and 6 GHz
+# [149] fail ch149. The bitrate and interface combination lines are there to
+# show that they are not channels.
 phy_info() {
-  local channel flags
-  printf 'Wiphy phy0\n\tBand 2:\n\t\tFrequencies:\n'
-  for channel in $(seq 36 4 64) $(seq 100 4 144) $(seq 149 4 177); do
-    flags=""
-    if [[ " ${radar:-} " == *" $channel "* ]]; then
-      flags=" (radar detection)"
-      # Some regulatory domains also forbid initiating radiation there.
-      [[ "$channel" != 140 ]] || flags=" (no IR, radar detection)"
+  local channel freq flags
+  printf 'Wiphy phy0\n\tBand 1:\n\t\tBitrates (non-HT):\n\t\t\t* 1.0 Mbps\n\t\tFrequencies:\n'
+  for channel in $(seq 1 14) BAND $(seq 36 4 64) $(seq 100 4 144) $(seq 149 4 177); do
+    if [[ "$channel" == BAND ]]; then
+      printf '\tBand 2:\n\t\tFrequencies:\n'
+      continue
     fi
-    printf '\t\t\t* %d.0 MHz [%d] (24.0 dBm)%s\n' $((5000 + channel * 5)) "$channel" "$flags"
+    [[ " ${absent:-} " != *" $channel "* ]] || continue
+    if ((channel == 14)); then
+      freq=2484
+    elif ((channel < 14)); then
+      freq=$((2412 + (channel - 1) * 5))
+    else
+      freq=$((5000 + channel * 5))
+    fi
+    flags=" (24.0 dBm)"
+    if [[ " ${disabled:-} " == *" $channel "* ]]; then
+      flags=" (disabled)"
+    elif [[ " ${radar:-} " == *" $channel "* ]]; then
+      flags+=" (radar detection)"
+      # Some regulatory domains also forbid initiating radiation there.
+      [[ "$channel" != 140 ]] || flags=" (24.0 dBm) (no IR, radar detection)"
+    elif [[ " ${no_ir:-} " == *" $channel "* ]]; then
+      flags+=" (no IR)"
+    fi
+    printf '\t\t\t* %d.0 MHz [%d]%s\n' "$freq" "$channel" "$flags"
+  done
+  printf '\tBand 4:\n\t\tFrequencies:\n'
+  for channel in $(seq 1 4 233); do
+    flags=" (23.0 dBm)"
+    ((channel <= 93)) || flags=" (disabled)"
+    printf '\t\t\t* %d.0 MHz [%d]%s\n' $((5950 + channel * 5)) "$channel" "$flags"
   done
   printf '\tvalid interface combinations:\n'
   printf '\t\t * #{ managed } <= 1, #{ AP } <= 1,\n'
@@ -52,12 +78,12 @@ phy_info() {
 
 # Render hostapd.conf with the helper's own functions for a station link as
 # `iw dev <station> info` prints it, e.g. "9 (2452 MHz), width: 20 MHz, ...".
-# Set $radar to the channels the station's radio marks for radar detection.
+# Set $radar, $no_ir, $disabled and $absent to flag channels as phy_info does.
 hostapd_conf_for() {
   local link="$1"
   # shellcheck disable=SC2034,SC2329 # The evaluated helper functions use these stubs.
   (
-    eval "$(awk '/^(station_channel|station_width|station_center_offset|station_vht_center|ht40_in_block|vht_block_center|radar_channels|block_has_radar|write_hostapd_conf)[(][)] [{]$/,/^}$/' "$helper")"
+    eval "$(awk '/^(station_channel|station_width|station_center_offset|station_vht_center|ht40_in_block|vht_block_center|channel_states|block_usable|write_hostapd_conf)[(][)] [{]$/,/^}$/' "$helper")"
     VIF=ap0 BLOCKED_FILE=/dev/null
     station_iface() { echo wlo1; }
     iw() {
@@ -230,25 +256,73 @@ radar=40 expect_conf '36 (5180 MHz), width: 80 MHz, center1: 5210 MHz' channel=3
 radar=40 expect_conf '36 (5180 MHz), width: 40 MHz, center1: 5190 MHz' channel=36 'ht_capab=[HT20]'
 radar=36 expect_conf '40 (5200 MHz), width: 40 MHz, center1: 5190 MHz' channel=40 'ht_capab=[HT20]'
 
-# A radar primary leaves nothing to narrow to. The helper must refuse before
-# writing hostapd.conf, with a reason that fits the panel's 120-character
-# error line.
-expect_dfs_refusal() {
-  local link="$1" conf message
-  if conf="$(radar="$gh_radar" hostapd_conf_for "$link" 2>/dev/null)" || [[ -n "$conf" ]]; then
-    echo "station '$link': hostapd.conf must not be written on a radar primary" >&2
+# hostapd 2.12 also disables channels marked "disabled" or "no IR" for an AP,
+# and a channel the radio does not list fails like a disabled one. GH
+# disables 169-177, so the 160 MHz block 149-177 narrows to 80 MHz, and
+# ch165, whose 80 and 40 MHz blocks hold 169, to 20 MHz.
+gh_disabled="169 173 177"
+disabled="$gh_disabled" expect_conf '149 (5745 MHz), width: 160 MHz, center1: 5815 MHz' \
+  channel=149 ieee80211n=1 ieee80211ac=1 'ht_capab=[HT40+]' \
+  vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=155
+disabled="$gh_disabled" expect_conf '161 (5805 MHz), width: 160 MHz' \
+  channel=161 ieee80211ac=1 'ht_capab=[HT40-]' vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=155
+disabled="$gh_disabled" expect_conf '165 (5825 MHz), width: 160 MHz, center1: 5815 MHz' \
+  channel=165 ieee80211n=1 'ht_capab=[HT20]'
+disabled="$gh_disabled" expect_no_key '165 (5825 MHz), width: 160 MHz, center1: 5815 MHz' \
+  ieee80211ac vht_oper_chwidth vht_oper_centr_freq_seg0_idx
+no_ir="44 48" expect_conf '36 (5180 MHz), width: 80 MHz, center1: 5210 MHz' \
+  channel=36 ieee80211n=1 'ht_capab=[HT40+]'
+no_ir="44 48" expect_no_key '36 (5180 MHz), width: 80 MHz, center1: 5210 MHz' \
+  ieee80211ac vht_oper_chwidth vht_oper_centr_freq_seg0_idx
+# 2.4 GHz too: the world regulatory domain marks 12 and 13 no IR.
+no_ir="12 13" expect_conf '9 (2452 MHz), width: 40 MHz, center1: 2462 MHz' \
+  hw_mode=g channel=9 ieee80211n=1 'ht_capab=[HT20]'
+# mac80211_hwsim, for one, has no channel 144.
+absent=144 expect_conf '136 (5680 MHz), width: 80 MHz, center1: 5690 MHz' \
+  channel=136 ieee80211n=1 'ht_capab=[HT40-]'
+absent=144 expect_no_key '136 (5680 MHz), width: 80 MHz, center1: 5690 MHz' \
+  ieee80211ac vht_oper_chwidth vht_oper_centr_freq_seg0_idx
+# The disabled 6 GHz [149] must not touch 5 GHz ch149 (and the usable 6 GHz
+# [13] must not rescue ch13 above).
+expect_conf '149 (5745 MHz), width: 80 MHz, center1: 5775 MHz' \
+  channel=149 ieee80211ac=1 'ht_capab=[HT40+]' vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=155
+
+# A primary that hostapd refuses leaves nothing to narrow to. The helper must
+# refuse before writing hostapd.conf, with a reason that contains TEXT and
+# fits the panel's 120-character error line.
+expect_refusal() {
+  local link="$1" text="$2" conf message
+  if conf="$(hostapd_conf_for "$link" 2>/dev/null)" || [[ -n "$conf" ]]; then
+    echo "station '$link': hostapd.conf must not be written on an unusable primary" >&2
     exit 1
   fi
-  message="$(radar="$gh_radar" hostapd_conf_for "$link" 2>&1 >/dev/null || true)"
-  if [[ "$message" != *"(DFS) channel ${link%% *},"* || ${#message} -gt 120 ]]; then
+  message="$(hostapd_conf_for "$link" 2>&1 >/dev/null || true)"
+  if [[ "$message" != *"$text"* || ${#message} -gt 120 ]]; then
     echo "station '$link': unclear refusal '$message'" >&2
     exit 1
   fi
 }
+expect_dfs_refusal() {
+  radar="$gh_radar" expect_refusal "$1" "radar (DFS) channel ${1%% *},"
+}
+no_ir="149 153 157 161 165" expect_refusal '149 (5745 MHz), width: 80 MHz, center1: 5775 MHz' \
+  'channel 149, where regulatory rules forbid starting an access point (no IR).'
+no_ir="12 13" expect_refusal '13 (2472 MHz), width: 20 MHz' \
+  'channel 13, where regulatory rules forbid starting an access point (no IR).'
+disabled="$gh_disabled" expect_refusal '169 (5845 MHz), width: 20 MHz' \
+  'channel 169, which this radio cannot use for an access point.'
+absent=144 expect_refusal '144 (5720 MHz), width: 20 MHz' \
+  'channel 144, which this radio cannot use for an access point.'
+# Channel 14 is 2484 MHz, off the 5 MHz spacing of 1-13. Japan enables it;
+# GH disables it.
+expect_conf '14 (2484 MHz), width: 20 MHz' hw_mode=g channel=14 'ht_capab=[HT20]'
+disabled=14 expect_refusal '14 (2484 MHz), width: 20 MHz' \
+  'channel 14, which this radio cannot use for an access point.'
 expect_dfs_refusal '100 (5500 MHz), width: 20 MHz'
 expect_dfs_refusal '52 (5260 MHz), width: 80 MHz, center1: 5290 MHz'
 expect_dfs_refusal '64 (5320 MHz), width: 40 MHz, center1: 5310 MHz'
 expect_dfs_refusal '104 (5520 MHz), width: 160 MHz, center1: 5570 MHz'
+# Channel 140 is no IR as well as radar; the radar reason names the fix.
 expect_dfs_refusal '140 (5700 MHz), width: 40 MHz'
 
 # start_ap renders hostapd.conf before it creates ap0, so a refusal leaves no
