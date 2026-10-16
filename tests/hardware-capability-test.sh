@@ -152,13 +152,25 @@ hostapd_conf_for() {
       else
         # iw prints the SSID, when the kernel reports one, before wiphy and
         # channel.
-        printf '\tssid my wiphy channel 5\n\ttype managed\n\twiphy 0\n\tchannel %s\n' "$link"
+        printf '\tssid %s\n\ttype managed\n\twiphy 0\n\tchannel %s\n' "${ssid:-my wiphy channel 5}" "$link"
       fi
     }
     ap_ssid() { echo test-ssid; }
     state_store() { if [[ "$1" == write-hostapd ]]; then cat; else echo test-pass; fi; }
     write_hostapd_conf
   )
+}
+
+# The SSID is untrusted network text printed before the channel line: field
+# names inside it must never be read as the station's width or center.
+ssid_cases() {
+  local ssid
+  for ssid in 'x width: 160 MHz, center1: 5570 MHz' 'x center1: a[0] width: z' 'width: center1:'; do
+    ssid="$ssid" expect_conf '36 (5180 MHz), width: 80 MHz, center1: 5210 MHz' \
+      channel=36 vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=42
+    ssid="$ssid" expect_conf '1 (2412 MHz), width: 20 MHz, center1: 2412 MHz' \
+      channel=1 'ht_capab=[HT20]'
+  done
 }
 
 expect_conf() {
@@ -184,6 +196,8 @@ expect_no_key() {
     fi
   done
 }
+
+ssid_cases
 
 # HT must be on at every width (ht_capab alone leaves a 54 Mbps 802.11g AP),
 # on the station's primary channel and HT40 pair.
