@@ -98,9 +98,10 @@ expect_conf '116 (5580 MHz), width: 160 MHz, center1: 5570 MHz' \
   channel=116 ieee80211ac=1 'ht_capab=[HT40+]' vht_oper_chwidth=2 vht_oper_centr_freq_seg0_idx=114
 expect_no_key '116 (5580 MHz), width: 160 MHz, center1: 5570 MHz' vht_oper_centr_freq_seg1_idx
 
-# Without center1 the block comes from the 5 GHz grid. hostapd rejects a
-# seg0 that is not channel +-2 or +-6 at 80 MHz ("Wrong coupling between HT
-# and VHT/HE channel setting").
+# Without center1 the block comes from the 5 GHz grid. The old channel + 4
+# fallback named a block that starts off the grid, which hostapd rejects as
+# "Frequency not present (seg0)"; its coupling check (seg0 = channel +-2 or
+# +-6 at 80 MHz) rejects it too.
 expect_conf '36 (5180 MHz), width: 80 MHz' \
   channel=36 ieee80211ac=1 'ht_capab=[HT40+]' vht_oper_chwidth=1 vht_oper_centr_freq_seg0_idx=42
 expect_conf '48 (5240 MHz), width: 80 MHz' \
