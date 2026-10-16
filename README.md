@@ -55,11 +55,15 @@ The AP runs on a **virtual interface** (`ap0`) alongside your station interface:
   # managed and AP
   ```
   The helper attempts to create `ap0` and reports the adapter driver and PHY
-  when the kernel rejects that operation. In particular, RTL8723DE adapters
-  using the `rtw88_8723de` driver report `interface combinations are not
-  supported`; they cannot keep Wi-Fi connected while hosting this hotspot and
-  are not compatible with this plugin. Do not use a fallback that disconnects
-  the station connection.
+  when the kernel rejects that operation. Do not use a fallback that
+  disconnects the station connection.
+  RTL8723DE adapters (`rtw88_8723de`) do not work with the stock kernel
+  driver: `rtw88` advertises the station + AP combination only for RTL8822C,
+  so `iw list` shows no combinations and hostapd fails with `Device or
+  resource busy`. Enabling the same single-channel combination for RTL8723D
+  in `rtw88` (a one-line driver change, built as a local module override) has
+  been verified to keep Wi-Fi connected while hosting this hotspot on kernel
+  7.2.5. The plugin does not install or modify kernel drivers.
   Intel AX200/AX210 (iwlwifi) are examples of adapters that can support this
   mode; the AP **must mirror the station's channel and channel width** (the
   helper does this automatically).
