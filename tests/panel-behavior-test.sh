@@ -40,8 +40,14 @@ if grep -q 'current: true' "$panel"; then
   exit 1
 fi
 grep -q 'readonly property bool showRowActions:' "$panel"
-grep -q 'readonly property bool canRename:' "$panel"
-grep -q 'visible: deviceRow.showRowActions && deviceRow.canRename' "$panel"
+# A saved alias outranks every discovered name, so every device can be renamed.
+grep -q 'tooltipText: "Rename device"' "$panel"
+if grep -q 'canRename' "$panel"; then
+  echo "every connected device must offer the rename action" >&2
+  exit 1
+fi
+# Save and cancel share a row with the name field so they line up with it.
+grep -A1 'RowLayout {' "$panel" | grep -q 'visible: deviceRow.editingAlias'
 grep -q 'id: deviceRowHover' "$panel"
 grep -q 'id: blockedRowHover' "$panel"
 if grep -q 'function clearDeviceRowSelection' "$panel"; then
@@ -83,6 +89,20 @@ grep -q '^FocusScope {' "$key_field"
 grep -q 'signal textEdited(string value)' "$key_field"
 grep -q 'Qt.Key_Backspace' "$key_field"
 grep -q '0xdc00' "$key_field"
+
+# Replacing the device list rebuilds every row, so the clients poll pauses
+# while a device is being named; otherwise the name field loses focus.
+grep -q 'function refreshClients' "$panel"
+grep -q 'if (editingDeviceMac !== "" || clientsProc.running) return' "$panel"
+grep -q 'if (root.editingDeviceMac !== "") return' "$panel"
+if [[ "$(grep -c 'startHelper(clientsProc' "$panel")" -ne 1 ]]; then
+  echo "clients polls must go through refreshClients" >&2
+  exit 1
+fi
+# A failed save whose row disappeared (the hotspot stopped meanwhile) must end
+# the edit, or the paused poll would keep the client list empty.
+alias_exit="$(sed -n '/id: aliasProc/,/^  }/p' "$panel")"
+grep -q 'if (!root.hotspotDevices.some(function(device) { return device.mac === editedMac }))' <<<"$alias_exit"
 
 # WPA passphrases may start or end with spaces; reading one must keep them.
 grep -q 'var password = String(stdoutText || "").replace(/\\r?\\n$/, "")' "$panel"

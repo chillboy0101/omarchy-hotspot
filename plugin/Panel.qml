@@ -192,9 +192,7 @@ Panel {
     if (statusProc.running || isBusy) return
     // pkexec (passwordless via polkit rule): channel + client counts need root.
     startHelper(statusProc, "status", [], 4, 4096)
-    if (isOn && !clientsProc.running) {
-      startHelper(clientsProc, "clients", [], 6, 32768)
-    }
+    if (isOn) refreshClients()
     if (!blockedProc.running) {
       startHelper(blockedProc, "blocked", [], 4, 16384)
     }
@@ -244,9 +242,7 @@ Panel {
       hotspotUplink = parts[2] || ""
       hotspotChannel = parts[3] || ""
       hotspotClients = parts[4] || ""
-      if (!clientsProc.running) {
-        startHelper(clientsProc, "clients", [], 6, 32768)
-      }
+      refreshClients()
       if (!blockedProc.running) {
         startHelper(blockedProc, "blocked", [], 4, 16384)
       }
@@ -267,7 +263,17 @@ Panel {
       hotspotChannel = ""
       hotspotClients = ""
       hotspotDevices = []
+      // No device rows remain, so close a pending rename and resume the list.
+      if (!deviceAliasBusy) cancelDeviceAlias()
     }
+  }
+
+  // Replacing hotspotDevices makes the Repeater rebuild every device row,
+  // which takes focus from the device-name field. Hold the list while a
+  // device is being named; the next poll after saving or cancelling resumes it.
+  function refreshClients() {
+    if (editingDeviceMac !== "" || clientsProc.running) return
+    startHelper(clientsProc, "clients", [], 6, 32768)
   }
 
   function readPassword() {
@@ -581,6 +587,8 @@ Panel {
     stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(clientsProc, "stdoutText", data) } }
     stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(clientsProc, "stderrText", data) } }
     onExited: function(code) {
+      // A poll that was already running when naming began must not rebuild the rows.
+      if (root.editingDeviceMac !== "") return
       if (code === 0) {
         var rows = String(stdoutText || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
         root.hotspotDevices = rows.map(function(line) {
@@ -666,6 +674,14 @@ Panel {
     onExited: function(code) {
       deviceAliasBusy = false
       if (code !== 0) {
+        // If the hotspot stopped during the save, the field's row is gone and
+        // the user cannot cancel; close the edit so the client list resumes.
+        var editedMac = root.editingDeviceMac
+        if (!root.hotspotDevices.some(function(device) { return device.mac === editedMac })) {
+          cancelDeviceAlias()
+          root.refresh()
+          return
+        }
         deviceAliasError = String(stderrText || stdoutText || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
         return
       }
@@ -1296,7 +1312,6 @@ Panel {
               required property int index
               readonly property bool editingAlias: root.editingDeviceMac === modelData.mac
               readonly property bool rowSelected: root.cursorActive && root.focusSection === "devices" && root.deviceIndex === index
-              readonly property bool canRename: modelData.source === "unknown" || modelData.source === "vendor"
               readonly property bool showRowActions: !editingAlias && (deviceRowHover.hovered || rowSelected)
               property bool nameActionHovered: false
               property bool blockActionHovered: false
@@ -1355,22 +1370,47 @@ Panel {
                     wrapMode: Text.Wrap
                   }
 
-                  KeyField {
+                  // The field and its save/cancel buttons share a row so the
+                  // buttons centre on the field rather than on the whole entry.
+                  RowLayout {
                     visible: deviceRow.editingAlias
                     width: parent.width
-                    text: root.deviceAliasDraft
-                    placeholderText: "Device name"
-                    maximumLength: 48
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    foreground: root.foreground
-                    enabled: !root.deviceAliasBusy
-                    onTextEdited: function(value) {
-                      root.deviceAliasDraft = value
-                      root.deviceAliasError = ""
+                    spacing: Style.space(8)
+
+                    KeyField {
+                      Layout.fillWidth: true
+                      text: root.deviceAliasDraft
+                      placeholderText: "Device name"
+                      maximumLength: 48
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      foreground: root.foreground
+                      enabled: !root.deviceAliasBusy
+                      onTextEdited: function(value) {
+                        root.deviceAliasDraft = value
+                        root.deviceAliasError = ""
+                      }
+                      onAccepted: root.saveDeviceAlias()
+                      onCancelled: root.cancelDeviceAlias()
                     }
-                    onAccepted: root.saveDeviceAlias()
-                    onCancelled: root.cancelDeviceAlias()
+
+                    PanelActionButton {
+                      iconText: "󰄬"
+                      tooltipText: "Save device name"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      enabled: !root.deviceAliasBusy
+                      onClicked: root.saveDeviceAlias()
+                    }
+
+                    PanelActionButton {
+                      iconText: "󰅙"
+                      tooltipText: "Cancel"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      enabled: !root.deviceAliasBusy
+                      onClicked: root.cancelDeviceAlias()
+                    }
                   }
 
                   RowLayout {
@@ -1420,9 +1460,9 @@ Panel {
                 }
 
                 PanelActionButton {
-                  visible: deviceRow.showRowActions && deviceRow.canRename
+                  visible: deviceRow.showRowActions
                   iconText: "󰏫"
-                  tooltipText: "Name device"
+                  tooltipText: "Rename device"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   onHovered: function(on) {
@@ -1447,25 +1487,6 @@ Panel {
                   onClicked: root.runDeviceAction("block-device", deviceRow.modelData.mac)
                 }
 
-                PanelActionButton {
-                  visible: deviceRow.editingAlias
-                  iconText: "󰄬"
-                  tooltipText: "Save device name"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  enabled: !root.deviceAliasBusy
-                  onClicked: root.saveDeviceAlias()
-                }
-
-                PanelActionButton {
-                  visible: deviceRow.editingAlias
-                  iconText: "󰅙"
-                  tooltipText: "Cancel"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  enabled: !root.deviceAliasBusy
-                  onClicked: root.cancelDeviceAlias()
-                }
               }
             }
           }
