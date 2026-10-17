@@ -84,6 +84,16 @@ grep -q 'signal textEdited(string value)' "$key_field"
 grep -q 'Qt.Key_Backspace' "$key_field"
 grep -q '0xdc00' "$key_field"
 
+# Replacing the device list rebuilds every row, so the clients poll pauses
+# while a device is being named; otherwise the name field loses focus.
+grep -q 'function refreshClients' "$panel"
+grep -q 'if (editingDeviceMac !== "" || clientsProc.running) return' "$panel"
+grep -q 'if (root.editingDeviceMac !== "") return' "$panel"
+if [[ "$(grep -c 'startHelper(clientsProc' "$panel")" -ne 1 ]]; then
+  echo "clients polls must go through refreshClients" >&2
+  exit 1
+fi
+
 # WPA passphrases may start or end with spaces; reading one must keep them.
 grep -q 'var password = String(stdoutText || "").replace(/\\r?\\n$/, "")' "$panel"
 if grep -q 'var password = String(stdoutText || "").trim()' "$panel"; then

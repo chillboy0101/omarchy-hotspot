@@ -192,9 +192,7 @@ Panel {
     if (statusProc.running || isBusy) return
     // pkexec (passwordless via polkit rule): channel + client counts need root.
     startHelper(statusProc, "status", [], 4, 4096)
-    if (isOn && !clientsProc.running) {
-      startHelper(clientsProc, "clients", [], 6, 32768)
-    }
+    if (isOn) refreshClients()
     if (!blockedProc.running) {
       startHelper(blockedProc, "blocked", [], 4, 16384)
     }
@@ -244,9 +242,7 @@ Panel {
       hotspotUplink = parts[2] || ""
       hotspotChannel = parts[3] || ""
       hotspotClients = parts[4] || ""
-      if (!clientsProc.running) {
-        startHelper(clientsProc, "clients", [], 6, 32768)
-      }
+      refreshClients()
       if (!blockedProc.running) {
         startHelper(blockedProc, "blocked", [], 4, 16384)
       }
@@ -267,7 +263,17 @@ Panel {
       hotspotChannel = ""
       hotspotClients = ""
       hotspotDevices = []
+      // No device rows remain, so close a pending rename and resume the list.
+      if (!deviceAliasBusy) cancelDeviceAlias()
     }
+  }
+
+  // Replacing hotspotDevices makes the Repeater rebuild every device row,
+  // which takes focus from the device-name field. Hold the list while a
+  // device is being named; the next poll after saving or cancelling resumes it.
+  function refreshClients() {
+    if (editingDeviceMac !== "" || clientsProc.running) return
+    startHelper(clientsProc, "clients", [], 6, 32768)
   }
 
   function readPassword() {
@@ -581,6 +587,8 @@ Panel {
     stdout: SplitParser { onRead: function(data) { root.appendProcessOutput(clientsProc, "stdoutText", data) } }
     stderr: SplitParser { onRead: function(data) { root.appendProcessOutput(clientsProc, "stderrText", data) } }
     onExited: function(code) {
+      // A poll that was already running when naming began must not rebuild the rows.
+      if (root.editingDeviceMac !== "") return
       if (code === 0) {
         var rows = String(stdoutText || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
         root.hotspotDevices = rows.map(function(line) {
