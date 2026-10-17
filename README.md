@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="preview.png" alt="Omarchy Hotspot panel opened from the Omarchy bar" width="100%">
+  <img src="preview.png" alt="Omarchy Hotspot panel opened from the Omarchy bar with a phone connected" width="100%">
 </p>
 
 <h1 align="center">Omarchy Hotspot</h1>
@@ -71,15 +71,15 @@ managing clients) happens entirely from the bar, without password prompts.
 | QR onboarding | Displays a standard `WIFI:` QR code that phone cameras join directly. |
 | Credential management | Reveal (auto-hides), copy, and change the network name and passphrase from the panel. |
 | Client visibility | Lists connected clients with name, MAC/IP, signal, and session time, using DHCP, mDNS, NetBIOS, and vendor data. |
-| Client control | Disconnect a client once, block it persistently, or unblock it later. |
+| Client control | Rename a client, disconnect it once, block it persistently, or unblock it later. |
 | Native integration | Omarchy-style panel with mouse and keyboard controls and theme-aware styling. |
 | Hardened privilege boundary | Narrow polkit rule, closed helper command set, atomic root-owned state, and a digest-verified installer. |
 
 ## Screenshots
 
 <p align="center">
-  <img src="docs/images/panel.png" alt="Hotspot panel with the access point active" width="380"><br>
-  <sub>Hotspot panel opened from the Omarchy bar with the access point active.</sub>
+  <img src="docs/images/panel.png" alt="Hotspot panel with the access point active and a phone connected" width="380"><br>
+  <sub>Hotspot panel opened from the Omarchy bar with the access point active and a phone connected.</sub>
 </p>
 
 ## System requirements
@@ -233,9 +233,11 @@ reconnect with the new credentials after the access point restarts.
 ### Manage connected devices
 
 Each client shows its best available local name with MAC/IP, signal strength,
-and connection time. A rename option appears only for clients reported as
-*Unknown device* or with a generic vendor label.
+and connection time. Hover a client (or move the keyboard cursor to it) to show
+its actions.
 
+- **Rename** gives a client your own name, which replaces the discovered one.
+  Save an empty name to go back to the discovered name.
 - **Disconnect** removes a client once. It can rejoin with the passphrase.
 - **Block** disconnects a client and keeps it out across restarts.
 - **Unblock**, under *Blocked devices*, restores access.
