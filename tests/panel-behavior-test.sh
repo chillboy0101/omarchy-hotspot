@@ -40,8 +40,14 @@ if grep -q 'current: true' "$panel"; then
   exit 1
 fi
 grep -q 'readonly property bool showRowActions:' "$panel"
-grep -q 'readonly property bool canRename:' "$panel"
-grep -q 'visible: deviceRow.showRowActions && deviceRow.canRename' "$panel"
+# A saved alias outranks every discovered name, so every device can be renamed.
+grep -q 'tooltipText: "Rename device"' "$panel"
+if grep -q 'canRename' "$panel"; then
+  echo "every connected device must offer the rename action" >&2
+  exit 1
+fi
+# Save and cancel share a row with the name field so they line up with it.
+grep -A1 'RowLayout {' "$panel" | grep -q 'visible: deviceRow.editingAlias'
 grep -q 'id: deviceRowHover' "$panel"
 grep -q 'id: blockedRowHover' "$panel"
 if grep -q 'function clearDeviceRowSelection' "$panel"; then

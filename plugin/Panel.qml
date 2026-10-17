@@ -1304,7 +1304,6 @@ Panel {
               required property int index
               readonly property bool editingAlias: root.editingDeviceMac === modelData.mac
               readonly property bool rowSelected: root.cursorActive && root.focusSection === "devices" && root.deviceIndex === index
-              readonly property bool canRename: modelData.source === "unknown" || modelData.source === "vendor"
               readonly property bool showRowActions: !editingAlias && (deviceRowHover.hovered || rowSelected)
               property bool nameActionHovered: false
               property bool blockActionHovered: false
@@ -1363,22 +1362,47 @@ Panel {
                     wrapMode: Text.Wrap
                   }
 
-                  KeyField {
+                  // The field and its save/cancel buttons share a row so the
+                  // buttons centre on the field rather than on the whole entry.
+                  RowLayout {
                     visible: deviceRow.editingAlias
                     width: parent.width
-                    text: root.deviceAliasDraft
-                    placeholderText: "Device name"
-                    maximumLength: 48
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    foreground: root.foreground
-                    enabled: !root.deviceAliasBusy
-                    onTextEdited: function(value) {
-                      root.deviceAliasDraft = value
-                      root.deviceAliasError = ""
+                    spacing: Style.space(8)
+
+                    KeyField {
+                      Layout.fillWidth: true
+                      text: root.deviceAliasDraft
+                      placeholderText: "Device name"
+                      maximumLength: 48
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      foreground: root.foreground
+                      enabled: !root.deviceAliasBusy
+                      onTextEdited: function(value) {
+                        root.deviceAliasDraft = value
+                        root.deviceAliasError = ""
+                      }
+                      onAccepted: root.saveDeviceAlias()
+                      onCancelled: root.cancelDeviceAlias()
                     }
-                    onAccepted: root.saveDeviceAlias()
-                    onCancelled: root.cancelDeviceAlias()
+
+                    PanelActionButton {
+                      iconText: "󰄬"
+                      tooltipText: "Save device name"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      enabled: !root.deviceAliasBusy
+                      onClicked: root.saveDeviceAlias()
+                    }
+
+                    PanelActionButton {
+                      iconText: "󰅙"
+                      tooltipText: "Cancel"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      enabled: !root.deviceAliasBusy
+                      onClicked: root.cancelDeviceAlias()
+                    }
                   }
 
                   RowLayout {
@@ -1428,9 +1452,9 @@ Panel {
                 }
 
                 PanelActionButton {
-                  visible: deviceRow.showRowActions && deviceRow.canRename
+                  visible: deviceRow.showRowActions
                   iconText: "󰏫"
-                  tooltipText: "Name device"
+                  tooltipText: "Rename device"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   onHovered: function(on) {
@@ -1455,25 +1479,6 @@ Panel {
                   onClicked: root.runDeviceAction("block-device", deviceRow.modelData.mac)
                 }
 
-                PanelActionButton {
-                  visible: deviceRow.editingAlias
-                  iconText: "󰄬"
-                  tooltipText: "Save device name"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  enabled: !root.deviceAliasBusy
-                  onClicked: root.saveDeviceAlias()
-                }
-
-                PanelActionButton {
-                  visible: deviceRow.editingAlias
-                  iconText: "󰅙"
-                  tooltipText: "Cancel"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  enabled: !root.deviceAliasBusy
-                  onClicked: root.cancelDeviceAlias()
-                }
               }
             }
           }
