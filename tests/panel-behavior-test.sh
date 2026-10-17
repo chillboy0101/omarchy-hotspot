@@ -99,6 +99,10 @@ if [[ "$(grep -c 'startHelper(clientsProc' "$panel")" -ne 1 ]]; then
   echo "clients polls must go through refreshClients" >&2
   exit 1
 fi
+# A failed save whose row disappeared (the hotspot stopped meanwhile) must end
+# the edit, or the paused poll would keep the client list empty.
+alias_exit="$(sed -n '/id: aliasProc/,/^  }/p' "$panel")"
+grep -q 'if (!root.hotspotDevices.some(function(device) { return device.mac === editedMac }))' <<<"$alias_exit"
 
 # WPA passphrases may start or end with spaces; reading one must keep them.
 grep -q 'var password = String(stdoutText || "").replace(/\\r?\\n$/, "")' "$panel"

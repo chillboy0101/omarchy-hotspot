@@ -674,6 +674,14 @@ Panel {
     onExited: function(code) {
       deviceAliasBusy = false
       if (code !== 0) {
+        // If the hotspot stopped during the save, the field's row is gone and
+        // the user cannot cancel; close the edit so the client list resumes.
+        var editedMac = root.editingDeviceMac
+        if (!root.hotspotDevices.some(function(device) { return device.mac === editedMac })) {
+          cancelDeviceAlias()
+          root.refresh()
+          return
+        }
         deviceAliasError = String(stderrText || stdoutText || "").replace(/\s+/g, " ").trim().slice(0, 120) || ("exit " + code)
         return
       }
