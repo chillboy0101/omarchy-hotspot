@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.chillboy0101.omarchy-hotspot",
   "name": "Omarchy Hotspot",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": "Carl Quist",
   "description": "Mobile hotspot toggle: serves a Wi-Fi AP (OmarchyHotspot) while the current connection stays up",
   "kinds": [

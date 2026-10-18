@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://plugins.omarchy.org/plugin.html?id=io.github.chillboy0101.omarchy-hotspot"><img alt="Listed on Omarchy Plugins" src="https://img.shields.io/badge/Omarchy%20Plugins-listed-ffaca0"></a>
-  <img alt="Version 1.1.0" src="https://img.shields.io/badge/version-1.1.0-e1e18f">
+  <img alt="Version 1.1.1" src="https://img.shields.io/badge/version-1.1.1-e1e18f">
   <img alt="Omarchy shell plugin" src="https://img.shields.io/badge/Omarchy-shell%20plugin-8b5cf6">
   <img alt="Platform: Arch Linux" src="https://img.shields.io/badge/platform-Arch%20Linux-1793d1">
   <img alt="Wi-Fi: 802.11n/ac" src="https://img.shields.io/badge/Wi--Fi-802.11n%2Fac-e1e18f">
@@ -140,16 +140,20 @@ connection is never interrupted.
 ## Installation
 
 Omarchy Hotspot is listed in the [Omarchy plugin marketplace](https://plugins.omarchy.org/plugin.html?id=io.github.chillboy0101.omarchy-hotspot).
-Installation takes two steps and no terminal work beyond adding the widget.
+The listing is marked **Manual setup**, so its page shows no install command:
+the hotspot's one-time setup installs a system helper and two packages with
+administrator rights. Setup takes two steps.
 
 ### Step 1. Add the bar widget
 
-Install it from the marketplace, or run:
+Run this in a terminal:
 
 ```sh
-omarchy plugin add https://github.com/chillboy0101/omarchy-hotspot --yes
-omarchy plugin enable io.github.chillboy0101.omarchy-hotspot --section right
+omarchy plugin add https://github.com/chillboy0101/omarchy-hotspot.git --enable
 ```
+
+Omarchy asks you to confirm, clones and validates the plugin, and then asks
+where to place the hotspot icon in the bar (right is preselected).
 
 ### Step 2. Run the one-time setup from the panel
 
@@ -301,8 +305,10 @@ rather than in a public issue.
 | Check hotspot status | `pkexec /usr/local/bin/omarchy-hotspot-helper status` |
 | Access point log | `journalctl -u omarchy-hotspot` |
 | DHCP and DNS log | `journalctl -u omarchy-hotspot-dns` |
-| Update the bar widget | `omarchy plugin update io.github.chillboy0101.omarchy-hotspot` |
-| Update the system helper | `omarchy plugin update io.github.chillboy0101.omarchy-hotspot`, then run `install.sh` from the plugin folder |
+| Update the bar widget | `omarchy plugin update io.github.chillboy0101.omarchy-hotspot`, then `omarchy restart shell` |
+| Update the system helper | After updating the bar widget, run `install.sh` from the plugin folder |
+
+Omarchy keeps running a plugin's old code until the shell restarts, so restart it after every update (see [omacom/omarchy#15688](https://github.com/omacom/omarchy/pull/15688)).
 
 Runtime files are kept in `/run/omarchy-hotspot/` and are recreated on each
 start. Persistent settings are kept in `/var/lib/omarchy-hotspot/`.
