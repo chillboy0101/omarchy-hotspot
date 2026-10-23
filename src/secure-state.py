@@ -313,6 +313,14 @@ def clean_label(value: str) -> str:
     return value
 
 
+def block_label(value: str) -> str:
+    # The label of a blocked device is its discovered name, which the device
+    # chooses (a DHCP hostname can be 63 characters). Clean it up instead of
+    # rejecting it, or the device could stop its own block from being saved.
+    cleaned = "".join(char for char in value if ord(char) >= 0x20 and ord(char) != 0x7F)
+    return cleaned.strip()[:48].strip() or "Unknown device"
+
+
 def replace_tsv(data: bytes, mac: str, label: str | None) -> bytes:
     rows: list[str] = []
     for raw in data.decode("utf-8", "strict").splitlines():
@@ -431,7 +439,7 @@ def main(argv: list[str]) -> int:
             if not lines:
                 raise SecurityError("missing device address")
             mac = validate_mac(lines[0])
-            label = clean_label(lines[1] if len(lines) > 1 else "Unknown device") or "Unknown device"
+            label = block_label(lines[1] if len(lines) > 1 else "")
             old = store.read_state("blocked-devices.tsv")
             store.write_state("blocked-devices.tsv", replace_tsv(old, mac, label))
         elif command == "unblock":

@@ -74,6 +74,31 @@ def main() -> None:
         else:
             raise AssertionError("control characters were accepted in a label")
 
+        # Typed names stay strictly limited to 48 characters...
+        try:
+            secure_state.clean_label("x" * 49)
+        except secure_state.SecurityError:
+            pass
+        else:
+            raise AssertionError("a 49 character typed name was accepted")
+
+        # ...but a blocked device's discovered name (a client-chosen DHCP
+        # hostname of up to 63 characters) must never stop the block itself.
+        assert secure_state.block_label("Carl's iPhone") == "Carl's iPhone"
+        assert secure_state.block_label("a" * 48) == "a" * 48
+        assert secure_state.block_label("a" * 63) == "a" * 48
+        assert secure_state.block_label("📱" * 63) == "📱" * 48
+        assert secure_state.block_label("  tab\tand\x07ctl\x7fname  ") == "tabandctlname"
+        assert secure_state.block_label("") == "Unknown device"
+        assert secure_state.block_label("\t \x00") == "Unknown device"
+        long_label = secure_state.block_label("h" * 63)
+        long_row = secure_state.replace_tsv(b"", mac, long_label)
+        state.write_state("blocked-devices.tsv", long_row)
+        assert state.read_state("blocked-devices.tsv").decode() == f"{mac}\t{'h' * 48}\n"
+        block_source = MODULE.read_text()
+        assert 'label = block_label(lines[1] if len(lines) > 1 else "")' in block_source
+        assert 'clean_label(lines[1] if len(lines) > 1 else "Unknown device")' not in block_source
+
         victim = pathlib.Path(tmp) / "victim"
         victim.write_text("unchanged")
         (state_path / "password").unlink()
