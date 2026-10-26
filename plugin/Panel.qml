@@ -94,7 +94,9 @@ Panel {
   readonly property bool isError: hotspotState === "error"
   readonly property bool visualOn: isBusy ? pendingOn : isOn
   readonly property string iconText: visualOn ? iconOn : iconOff
-  readonly property color barIconColor: visualOn ? foreground : Qt.darker(foreground, 1.55)
+  readonly property color barIconColor: visualOn
+    ? (bar ? bar.barForeground : Color.foreground)
+    : Qt.darker(bar ? bar.barForeground : Color.foreground, 1.55)
   readonly property bool showingQr: qrSize > 0 && !qrLoading && !isError
   readonly property color stateColor: isError ? root.urgent : root.foreground
 
@@ -900,25 +902,6 @@ Panel {
     bar: root.bar
     text: root.iconText
     foreground: root.barIconColor
-    active: false
-    iconComponent: Component {
-      OpticalGlyph {
-        text: root.iconOn
-        fontFamily: root.fontFamily
-        fontSize: Style.bar.iconFont
-        color: root.barIconColor
-        // Use the same explicit slash geometry as native Tailscale.
-        Rectangle {
-          visible: !root.visualOn
-          anchors.centerIn: parent
-          width: parent.tightWidth * 1.1
-          height: Math.max(1, Style.bar.iconFont * 0.09)
-          radius: height / 2
-          color: root.barIconColor
-          rotation: -45
-        }
-      }
-    }
 
     onPressed: function(btn) {
       if (btn === Qt.RightButton) root.toggleHotspot()
@@ -985,10 +968,10 @@ Panel {
             width: heroIcon.paintedWidth * 1.1
             height: Math.max(1, Style.font.display * 0.09)
             radius: height / 2
-            color: root.barIconColor
+            color: root.foreground
             rotation: -45
           }
-          color: root.barIconColor
+          color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.display
           opacity: root.visualOn ? 1.0 : 0.5

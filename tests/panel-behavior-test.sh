@@ -7,6 +7,13 @@ panel="$repo_dir/plugin/Panel.qml"
 grep -q 'trim().split("\\t")' "$panel"
 grep -q 'btn === Qt.RightButton.*root.toggleHotspot' "$panel"
 grep -q 'btn === Qt.MiddleButton.*root.refresh' "$panel"
+grep -q 'text: root.iconText' "$panel"
+grep -q 'foreground: root.barIconColor' "$panel"
+grep -q 'bar ? bar.barForeground : Color.foreground' "$panel"
+if grep -q 'iconComponent:' "$panel"; then
+  echo "bar state glyphs must use native BarIconButton rendering" >&2
+  exit 1
+fi
 
 editor_flow="$(sed -n '/function startHotspotEdit()/,/^  }/p' "$panel")"
 if grep -Eq 'hotspotNameField\.(selectAll|forceActiveFocus)' <<<"$editor_flow"; then
